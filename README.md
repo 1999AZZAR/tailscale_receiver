@@ -1,5 +1,60 @@
 # Tailscale Auto-File Receiver Service
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Important Configuration](#important-configuration)
+- [Taildrop Setup Requirements](#taildrop-setup-requirements)
+- [Installation](#installation)
+  - [What the Installer Does](#what-the-installer-does)
+  - [Installation Verification](#installation-verification)
+  - [Reinstallation and Updates](#reinstallation-and-updates)
+- [Usage](#usage)
+  - [Managing the Service](#usage-managing-the-service)
+  - [Sending Files](#usage-sending-files)
+    - [Via Dolphin Context Menu](#via-dolphin-context-menu-recommended)
+    - [Via Command Line](#via-command-line)
+    - [Device Selection Interface](#device-selection-interface)
+    - [Device Detection](#device-detection)
+- [Troubleshooting](#troubleshooting)
+  - [Receiver Service Issues](#receiver-service-issues)
+  - [Sender Issues](#sender-issues)
+  - [General Issues](#general-issues)
+- [Advanced Configuration](#advanced-configuration)
+  - [Customizing the Receiver](#customizing-the-receiver)
+  - [Customizing the Sender](#customizing-the-sender)
+  - [Systemd Service Customization](#systemd-service-customization)
+- [Uninstallation](#uninstallation)
+  - [What the Uninstaller Removes](#what-the-uninstaller-removes)
+- [Security Considerations](#security-considerations)
+  - [File Permissions](#file-permissions)
+  - [Network Security](#network-security)
+  - [Privacy](#privacy)
+- [Performance Notes](#performance-notes)
+  - [Transfer Speed](#transfer-speed)
+  - [Resource Usage](#resource-usage)
+  - [Monitoring](#monitoring)
+- [Integration with Other Tools](#integration-with-other-tools)
+  - [Alternative File Managers](#alternative-file-managers)
+  - [Automation](#automation)
+- [Development and Contributing](#development-and-contributing)
+  - [Project Structure](#project-structure)
+  - [Testing](#testing)
+  - [Debugging](#debugging)
+  - [Contributing](#contributing)
+- [How It Works](#how-it-works)
+  - [tailscale-receive.sh](#tailscale-receivesh)
+  - [tailscale-send.sh](#tailscale-sendsh)
+  - [setup.sh](#setupsh)
+  - [uninstall.sh](#uninstallsh)
+- [Frequently Asked Questions](#frequently-asked-questions)
+- [License](#license)
+- [Changelog](#changelog)
+
+---
+
 ## Overview
 
 This project provides a comprehensive solution for automated file sharing via Tailscale's Taildrop feature. It includes both receiving and sending capabilities:
@@ -41,7 +96,7 @@ This setup is ideal for users who frequently share files through Tailscale and w
   - KDE Plasma with Dolphin file manager for context menu integration.
 - **Taildrop must be enabled** in your Tailscale admin console (General settings → Send Files feature).
 
-## ⚠️ Important: Configuration
+## Important Configuration
 
 Before you begin the installation, you **must** configure the receiver script to match your system.
 
@@ -175,7 +230,9 @@ Automatically performs an update/reinstall without prompting.
 
 **Backup Location**: Existing configurations are backed up to `/tmp/tailscale-receiver-backup-YYYYMMDD-HHMMSS/`
 
-## Usage: Managing the Service
+## Usage
+
+### Managing the Service
 
 You can manage the service using standard `systemctl` commands.
 
@@ -201,16 +258,16 @@ You can manage the service using standard `systemctl` commands.
     sudo systemctl enable tailscale-receive.service
     ```
 
-## Usage: Sending Files
+### Sending Files
 
-### Via Dolphin Context Menu (Recommended)
+#### Via Dolphin Context Menu (Recommended)
 
 1. **Right-click** on any file or folder in Dolphin
 2. Select **"Send to device using Tailscale"** from the context menu
 3. Choose the destination device from the popup dialog
 4. Wait for the transfer to complete (desktop notification will appear)
 
-### Via Command Line
+#### Via Command Line
 
 ```bash
 # Send a single file
@@ -226,7 +283,7 @@ You can manage the service using standard `systemctl` commands.
 /usr/local/bin/tailscale-send.sh
 ```
 
-### Device Selection Interface
+#### Device Selection Interface
 
 The sender script automatically detects available GUI tools and uses the best available:
 
@@ -235,7 +292,7 @@ The sender script automatically detects available GUI tools and uses the best av
 3. **whiptail** (Terminal) - Text-based menu interface
 4. **CLI Fallback** - Simple numbered list with text input
 
-### Device Detection
+#### Device Detection
 
 The script uses two methods to detect online Tailscale devices:
 
@@ -244,7 +301,7 @@ The script uses two methods to detect online Tailscale devices:
 
 ## Troubleshooting
 
-### Receiver Service Issues
+#### Receiver Service Issues
 
 **Service not starting:**
 ```bash
@@ -264,7 +321,7 @@ tailscale status
 - Ensure the target directory exists and is writable
 - Check file permissions in the target directory
 
-### Sender Issues
+#### Sender Issues
 
 **"No online Tailscale devices found":**
 ```bash
@@ -305,7 +362,7 @@ sudo dnf install kdialog zenity newt      # Fedora
 sudo pacman -S kdialog zenity newt        # Arch
 ```
 
-### General Issues
+#### General Issues
 
 **Tailscale not connecting:**
 ```bash
@@ -330,7 +387,7 @@ sudo chmod +x /usr/local/bin/tailscale-*.sh
 
 ## Advanced Configuration
 
-### Customizing the Receiver
+#### Customizing the Receiver
 
 You can modify the receiver behavior by editing `/usr/local/bin/tailscale-receive.sh`:
 
@@ -348,7 +405,7 @@ sudo ./setup.sh
 - `FIX_OWNER`: Username to assign ownership of received files
 - Check interval: Currently 15 seconds (modify the `sleep 15` line)
 
-### Customizing the Sender
+#### Customizing the Sender
 
 The sender script supports several environment variables:
 
@@ -363,7 +420,7 @@ export DEBUG=1
 export NOTIFY_TIMEOUT=10
 ```
 
-### Systemd Service Customization
+#### Systemd Service Customization
 
 You can customize the systemd service by editing `/etc/systemd/system/tailscale-receive.service`:
 
@@ -394,7 +451,7 @@ This script will:
 4.  Delete the `tailscale-receive.sh` script from `/usr/local/bin`.
 5.  Delete the `tailscale-send.sh` script and Dolphin service menu entries.
 
-### What the Uninstaller Removes
+#### What the Uninstaller Removes
 
 - `/usr/local/bin/tailscale-receive.sh`
 - `/usr/local/bin/tailscale-send.sh`
@@ -410,34 +467,34 @@ This script will:
 
 ## Security Considerations
 
-### File Permissions
+#### File Permissions
 - Received files are automatically assigned to your user account
 - The receiver service runs as root to handle file operations
 - Sender script runs with your user permissions
 
-### Network Security
+#### Network Security
 - All file transfers use Tailscale's encrypted peer-to-peer connections
 - No files are stored on Tailscale servers during transfer
 - Device authentication is handled by Tailscale's security model
 
-### Privacy
+#### Privacy
 - File transfer logs are minimal and local only
 - No telemetry or data collection
 - Device lists are retrieved locally via Tailscale CLI
 
 ## Performance Notes
 
-### Transfer Speed
+#### Transfer Speed
 - File transfers use the fastest available path between devices
 - Speed depends on your network conditions and device locations
 - Large files may take time; the sender shows progress notifications
 
-### Resource Usage
+#### Resource Usage
 - Receiver service uses minimal CPU (checks every 15 seconds)
 - Memory usage is negligible
 - Network usage only when files are being transferred
 
-### Monitoring
+#### Monitoring
 ```bash
 # Monitor service resource usage
 sudo systemctl status tailscale-receive.service
@@ -451,7 +508,7 @@ htop  # or top, glances, etc.
 
 ## Integration with Other Tools
 
-### Alternative File Managers
+#### Alternative File Managers
 
 While the service menu is designed for Dolphin, you can use the sender script with other file managers:
 
@@ -466,7 +523,7 @@ While the service menu is designed for Dolphin, you can use the sender script wi
 **Ranger:**
 - Bind the sender script to a key in `~/.config/ranger/rc.conf`
 
-### Automation
+#### Automation
 
 You can integrate the sender script into your workflow:
 
@@ -482,7 +539,7 @@ done
 
 ## Development and Contributing
 
-### Project Structure
+#### Project Structure
 ```
 tailscale_receiver/
 ├── README.md              # This documentation
@@ -492,7 +549,7 @@ tailscale_receiver/
 └── tailscale-send.sh      # Sender script with GUI
 ```
 
-### Testing
+#### Testing
 
 Before installing, you can test the scripts locally:
 
@@ -504,7 +561,7 @@ Before installing, you can test the scripts locally:
 ./tailscale-send.sh /path/to/test/file
 ```
 
-### Debugging
+#### Debugging
 
 Enable debug output for troubleshooting:
 
@@ -516,7 +573,7 @@ sudo journalctl -u tailscale-receive.service -f
 DEBUG=1 /usr/local/bin/tailscale-send.sh /path/to/file
 ```
 
-### Contributing
+#### Contributing
 
 When contributing to this project:
 1. Test your changes thoroughly
@@ -526,7 +583,7 @@ When contributing to this project:
 
 ## How It Works
 
-### `tailscale-receive.sh`
+#### `tailscale-receive.sh`
 
 This is the core worker script. It runs in an infinite loop, checking for files every 15 seconds.
 1.  It performs health checks for an internet connection and the Tailscale daemon.
@@ -534,7 +591,7 @@ This is the core worker script. It runs in an infinite loop, checking for files 
 3.  It compares the directory contents before and after the `get` command to identify new files.
 4.  If new files are found, it corrects their ownership using `chown` and sends a desktop notification as your user.
 
-### `tailscale-send.sh`
+#### `tailscale-send.sh`
 
 An interactive sender for Taildrop:
 
@@ -564,7 +621,7 @@ It is wired into Dolphin as a context menu action named "Send to device using Ta
 4. Shows desktop notification with results
 5. Returns appropriate exit code
 
-### `setup.sh`
+#### `setup.sh`
 
 This script automates the installation by:
 1.  Copying your configured `tailscale-receive.sh` to `/usr/local/bin`.
@@ -578,7 +635,7 @@ This script automates the installation by:
 - Includes proper icon and action definitions
 - Refreshes KDE service cache after installation
 
-### `uninstall.sh`
+#### `uninstall.sh`
 
 This script performs a complete cleanup:
 1. Stops and disables the systemd service
