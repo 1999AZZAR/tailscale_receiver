@@ -24,6 +24,12 @@ SERVICE_NAME="tailscale-receive"
 # The full path to the systemd service file.
 SERVICE_FILE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 
+# Sender script and Dolphin Service Menu
+SEND_SOURCE_SCRIPT="tailscale-send.sh"
+DEST_SEND_SCRIPT_PATH="/usr/local/bin/tailscale-send.sh"
+SYS_KIO_SERVICEMENU_DIR="/usr/share/kio/servicemenus"
+SYS_KSERVICES5_SERVICEMENU_DIR="/usr/share/kservices5/ServiceMenus"
+
 # --- Functions ---
 
 # Function to print a formatted header
@@ -65,6 +71,16 @@ cp "$SOURCE_SCRIPT" "$DEST_SCRIPT_PATH" || print_error_and_exit "Failed to copy 
 chmod +x "$DEST_SCRIPT_PATH" || print_error_and_exit "Failed to make script executable."
 print_success "Receiver script installed to '$DEST_SCRIPT_PATH'."
 
+# 3b. Copy and set permissions for the sender script (for Dolphin context menu)
+if [ -f "$SEND_SOURCE_SCRIPT" ]; then
+  echo "➡️  Installing the sender script..."
+  cp "$SEND_SOURCE_SCRIPT" "$DEST_SEND_SCRIPT_PATH" || print_error_and_exit "Failed to copy script to '$DEST_SEND_SCRIPT_PATH'."
+  chmod +x "$DEST_SEND_SCRIPT_PATH" || print_error_and_exit "Failed to make sender script executable."
+  print_success "Sender script installed to '$DEST_SEND_SCRIPT_PATH'."
+else
+  echo "⚠️  Sender script '$SEND_SOURCE_SCRIPT' not found. Skipping send integration."
+fi
+
 # 4. Create the systemd service file using a HERE document
 echo "➡️  Creating systemd service file..."
 cat > "$SERVICE_FILE_PATH" << EOL
@@ -93,6 +109,36 @@ systemctl daemon-reload
 systemctl enable "$SERVICE_NAME.service" || print_error_and_exit "Failed to enable the service."
 systemctl start "$SERVICE_NAME.service" || print_error_and_exit "Failed to start the service."
 print_success "Service has been enabled and started."
+
+# 7. Install Dolphin service menu entries (system-wide)
+if [ -f "$DEST_SEND_SCRIPT_PATH" ]; then
+  echo "➡️  Installing Dolphin service menu..."
+  mkdir -p "$SYS_KIO_SERVICEMENU_DIR" "$SYS_KSERVICES5_SERVICEMENU_DIR"
+
+  # Write a single .desktop content
+  DESKTOP_CONTENT='[Desktop Entry]
+Type=Service
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+MimeType=all/allfiles;inode/directory;
+Actions=TailScaleSend;
+
+[Desktop Action TailScaleSend]
+Name=Send to device using Tailscale
+Icon=network-workgroup
+Exec=/usr/local/bin/tailscale-send.sh %F
+'
+
+  echo "$DESKTOP_CONTENT" > "$SYS_KIO_SERVICEMENU_DIR/tailscale-send.desktop" || print_error_and_exit "Failed to write service menu (.kio)."
+  echo "$DESKTOP_CONTENT" > "$SYS_KSERVICES5_SERVICEMENU_DIR/tailscale-send.desktop" || print_error_and_exit "Failed to write service menu (kservices5)."
+  print_success "Dolphin service menu installed."
+
+  # Rebuild KDE service cache if tools exist
+  if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 >/dev/null 2>&1 || true
+  elif command -v kbuildsycoca5 >/dev/null 2>&1; then
+    kbuildsycoca5 >/dev/null 2>&1 || true
+  fi
+fi
 
 # 6. Final status check and confirmation
 echo ""

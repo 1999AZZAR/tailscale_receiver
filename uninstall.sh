@@ -17,6 +17,9 @@
 DEST_SCRIPT_PATH="/usr/local/bin/tailscale-receive.sh"
 SERVICE_NAME="tailscale-receive"
 SERVICE_FILE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+DEST_SEND_SCRIPT_PATH="/usr/local/bin/tailscale-send.sh"
+SYS_KIO_SERVICEMENU_DIR="/usr/share/kio/servicemenus"
+SYS_KSERVICES5_SERVICEMENU_DIR="/usr/share/kservices5/ServiceMenus"
 
 # --- Functions ---
 
@@ -94,7 +97,31 @@ else
   print_warning "Receiver script not found at '$DEST_SCRIPT_PATH'."
 fi
 
-# 6. Final confirmation
+# 6. Remove the sender script and Dolphin service menus
+echo "➡️  Removing sender script and Dolphin service menus..."
+if [ -f "$DEST_SEND_SCRIPT_PATH" ]; then
+  rm "$DEST_SEND_SCRIPT_PATH" || print_error_and_exit "Failed to remove the sender script."
+  print_success "Sender script removed from '$DEST_SEND_SCRIPT_PATH'."
+else
+  print_warning "Sender script not found at '$DEST_SEND_SCRIPT_PATH'."
+fi
+
+if [ -f "$SYS_KIO_SERVICEMENU_DIR/tailscale-send.desktop" ]; then
+  rm "$SYS_KIO_SERVICEMENU_DIR/tailscale-send.desktop" || print_error_and_exit "Failed to remove service menu (.kio)."
+  print_success "Removed $SYS_KIO_SERVICEMENU_DIR/tailscale-send.desktop."
+fi
+if [ -f "$SYS_KSERVICES5_SERVICEMENU_DIR/tailscale-send.desktop" ]; then
+  rm "$SYS_KSERVICES5_SERVICEMENU_DIR/tailscale-send.desktop" || print_error_and_exit "Failed to remove service menu (kservices5)."
+  print_success "Removed $SYS_KSERVICES5_SERVICEMENU_DIR/tailscale-send.desktop."
+fi
+
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+  kbuildsycoca6 >/dev/null 2>&1 || true
+elif command -v kbuildsycoca5 >/dev/null 2>&1; then
+  kbuildsycoca5 >/dev/null 2>&1 || true
+fi
+
+# 7. Final confirmation
 echo ""
 print_header "Uninstall Complete!"
 echo "The Tailscale receiver service and all related files have been removed."
