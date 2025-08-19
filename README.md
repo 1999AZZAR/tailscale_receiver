@@ -90,6 +90,13 @@ Before using the send/receive features, ensure Taildrop is properly configured:
    tailscale file cp /path/to/test/file device-name:
    ```
 
+4. **Set File Transfer Permissions** (Important!):
+   ```bash
+   # This allows your user to send files without sudo
+   sudo tailscale set --operator=$USER
+   ```
+   **Note**: Without this, you'll get "Access denied" errors when trying to send files.
+
 ## Installation
 
 1.  **Clone or Download**:
@@ -119,14 +126,17 @@ Before using the send/receive features, ensure Taildrop is properly configured:
 
 The setup script performs the following actions:
 
-1. **Installs Receiver Script**: Copies `tailscale-receive.sh` to `/usr/local/bin/` and makes it executable
-2. **Creates Systemd Service**: Creates `/etc/systemd/system/tailscale-receive.service` with proper dependencies
-3. **Enables Service**: Starts the service immediately and configures it to start on boot
-4. **Installs Sender Script**: Copies `tailscale-send.sh` to `/usr/local/bin/` (if present)
-5. **Creates Dolphin Integration**: Installs service menu files for both KF5 and KF6:
+1. **Detects Existing Installation**: Checks for existing scripts and services
+2. **Handles Reinstallation**: Offers options for update/reinstall or fresh install
+3. **Creates Backups**: Automatically backs up existing configuration before updates
+4. **Installs Receiver Script**: Copies `tailscale-receive.sh` to `/usr/local/bin/` and makes it executable
+5. **Creates Systemd Service**: Creates `/etc/systemd/system/tailscale-receive.service` with proper dependencies
+6. **Enables Service**: Starts the service immediately and configures it to start on boot
+7. **Installs Sender Script**: Copies `tailscale-send.sh` to `/usr/local/bin/` (if present)
+8. **Creates Dolphin Integration**: Installs service menu files for both KF5 and KF6:
    - `/usr/share/kio/servicemenus/tailscale-send.desktop`
    - `/usr/share/kservices5/ServiceMenus/tailscale-send.desktop`
-6. **Updates KDE Cache**: Runs `kbuildsycoca6` or `kbuildsycoca5` to refresh Dolphin's service menu cache
+9. **Updates KDE Cache**: Runs `kbuildsycoca6` or `kbuildsycoca5` to refresh Dolphin's service menu cache
 
 ### Installation Verification
 
@@ -143,6 +153,27 @@ sudo systemctl status tailscale-receive.service
 ls /usr/share/kio/servicemenus/tailscale-send.desktop
 ls /usr/share/kservices5/ServiceMenus/tailscale-send.desktop
 ```
+
+### Reinstallation and Updates
+
+The setup script supports reinstallation and updates:
+
+**Interactive Mode** (default):
+```bash
+sudo ./setup.sh
+```
+When an existing installation is detected, you'll be prompted to choose:
+- **Update/Reinstall**: Backup existing config and install new version (recommended)
+- **Fresh Install**: Remove existing installation completely
+- **Cancel**: Abort the installation
+
+**Non-Interactive Mode** (for automation):
+```bash
+NONINTERACTIVE=true sudo ./setup.sh
+```
+Automatically performs an update/reinstall without prompting.
+
+**Backup Location**: Existing configurations are backed up to `/tmp/tailscale-receiver-backup-YYYYMMDD-HHMMSS/`
 
 ## Usage: Managing the Service
 
@@ -242,6 +273,15 @@ tailscale status
 
 # Ensure other devices are online and accessible
 tailscale ping <device-name>
+```
+
+**"Access denied: file access denied" errors:**
+```bash
+# Set file transfer permissions for your user
+sudo tailscale set --operator=$USER
+
+# Or use sudo for individual transfers
+sudo tailscale file cp <file> <device>:
 ```
 
 **Dolphin context menu not appearing:**

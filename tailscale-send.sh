@@ -24,28 +24,21 @@ ensure_tailscale_ready() {
     # give it a moment
     sleep 2
   fi
+
+  # Check if we have file transfer permissions
+  if ! tailscale file cp --targets >/dev/null 2>&1; then
+    echo "⚠️  Warning: File transfer permissions not set. Attempting to fix..." >&2
+    echo "   Run: sudo tailscale set --operator=\$USER" >&2
+    echo "   Or use: sudo tailscale file cp <file> <device>:" >&2
+  fi
 }
 
 list_online_devices_json() {
-  # Outputs a newline-separated list of online peer device names (best-effort DNSName/HostName)
-  if has_cmd jq; then
-    tailscale status --json 2>/dev/null \
-      | jq -r '
-        (.Peer // {})
-        | to_entries
-        | map(.value)
-        | map(select(.Online == true))
-        | map(.DNSName // .HostName // .Hostinfo.Hostname // .Name)
-        | map(sub("\\.$"; ""))
-        | .[]
-      ' | sed '/^$/d' | sort -u
-  else
-    # Fallback: parse text table from `tailscale status`
-    # Columns: 1=TS IP, 2=machine, 3=user, 4=os, 5=status
-    tailscale status 2>/dev/null \
-      | awk 'NR>1 { if ($5 ~ /active|idle/) print $2 }' \
-      | sed '/^$/d' | sort -u
-  fi
+  # Use tailscale file cp --targets to get the correct device names for file transfer
+  # This ensures we get the exact names that tailscale file cp expects
+  tailscale file cp --targets 2>/dev/null \
+    | awk -F'\t' '$2 != "" && $3 == "" { print $2 }' \
+    | sed '/^$/d' | sort -u
 }
 
 pick_device_gui() {
@@ -114,6 +107,8 @@ send_files() {
   local device=$1; shift
   local sent_count=0 failed_count=0 file
 
+  echo "Sending files to device: $device" >&2
+
   for file in "$@"; do
     if [ ! -e "$file" ]; then
       echo "Skipping non-existent path: $file" >&2
@@ -121,9 +116,23 @@ send_files() {
       continue
     fi
 
-    if tailscale file cp "$file" "$device:"; then
+    echo "Sending: $file" >&2
+    
+    # Capture both stdout and stderr to see what's happening
+    if output=$(tailscale file cp "$file" "$device:" 2>&1); then
+      echo "Successfully sent: $file" >&2
       sent_count=$((sent_count+1))
     else
+      echo "Failed to send: $file" >&2
+      echo "Error output: $output" >&2
+      
+      # Check if it's a permission error and provide guidance
+      if echo "$output" | grep -q "Access denied: file access denied"; then
+        echo "💡 This is a permissions issue. Try one of these solutions:" >&2
+        echo "   1. Run: sudo tailscale set --operator=\$USER" >&2
+        echo "   2. Or use sudo: sudo tailscale file cp \"$file\" \"$device:\"" >&2
+      fi
+      
       failed_count=$((failed_count+1))
     fi
   done
