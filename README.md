@@ -106,6 +106,25 @@ chmod +x install.sh uninstall.sh tailscale-receive.sh tailscale-send.sh
 sudo ./install.sh
 ```
 
+#### One‑Line Install (curl/wget)
+
+Using curl:
+```bash
+bash -c 'set -euo pipefail; tmp=$(mktemp -d); cd "$tmp"; \
+for f in install.sh tailscale-receive.sh tailscale-send.sh; do \
+  curl -fsSLO "https://raw.githubusercontent.com/1999AZZAR/tailscale_receiver/master/$f"; \
+done; chmod +x install.sh tailscale-receive.sh tailscale-send.sh; sudo ./install.sh'
+```
+
+Using wget:
+```bash
+bash -c 'set -euo pipefail; tmp=$(mktemp -d); cd "$tmp"; \
+wget -q https://raw.githubusercontent.com/1999AZZAR/tailscale_receiver/master/install.sh \
+         https://raw.githubusercontent.com/1999AZZAR/tailscale_receiver/master/tailscale-receive.sh \
+         https://raw.githubusercontent.com/1999AZZAR/tailscale_receiver/master/tailscale-send.sh; \
+chmod +x install.sh tailscale-receive.sh tailscale-send.sh; sudo ./install.sh'
+```
+
 #### What Gets Installed
 | Item | Path | Purpose |
 |---|---|---|
@@ -260,6 +279,21 @@ Common tweaks: add env vars, modify restart behavior, dependencies, or apply san
 ```bash
 sudo ./uninstall.sh
 ```
+#### One‑Line Uninstall (curl/wget)
+
+Using curl:
+```bash
+bash -c 'set -euo pipefail; tmp=$(mktemp -d); cd "$tmp"; \
+curl -fsSLO https://raw.githubusercontent.com/1999AZZAR/tailscale_receiver/master/uninstall.sh; \
+chmod +x uninstall.sh; sudo ./uninstall.sh'
+```
+
+Using wget:
+```bash
+bash -c 'set -euo pipefail; tmp=$(mktemp -d); cd "$tmp"; \
+wget -q https://raw.githubusercontent.com/1999AZZAR/tailscale_receiver/master/uninstall.sh; \
+chmod +x uninstall.sh; sudo ./uninstall.sh'
+```
 Removes:
 - `/usr/local/bin/tailscale-receive.sh`
 - `/usr/local/bin/tailscale-send.sh`
@@ -290,7 +324,16 @@ Note: Does not remove your received files or your original project files.
 [MIT License](./LICENSE)
 
 ### Changelog
-#### Version 2.0 (Current)
+#### Version 2.1 (Current)
+- Installer now prompts for target user and configures receiver automatically
+- Fixed user capture during install (prompts redirected to stderr) for reliable non-interactive usage
+- Corrected absolute TARGET_DIR paths and ownership handling
+- Added one-line install/uninstall using curl or wget
+- Refined README: clickable TOC, Quick Start, configuration tables, troubleshooting matrix, security notes
+- Added TODO.md with comprehensive hardening and enhancement roadmap
+- Uninstall notes clarify user data is preserved and how to remove it manually
+
+#### Version 2.0
 - Added interactive sender with device picker
 - Dolphin context menu integration
 - Expanded documentation and troubleshooting
