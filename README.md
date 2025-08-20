@@ -5,7 +5,6 @@
 - [Overview](#overview)
 - [Features](#features)
 - [Prerequisites](#prerequisites)
-- [Important Configuration](#important-configuration)
 - [Taildrop Setup Requirements](#taildrop-setup-requirements)
 - [Installation](#installation)
   - [What the Installer Does](#what-the-installer-does)
@@ -47,7 +46,7 @@
 - [How It Works](#how-it-works)
   - [tailscale-receive.sh](#tailscale-receivesh)
   - [tailscale-send.sh](#tailscale-sendsh)
-  - [setup.sh](#setupsh)
+  - [install.sh](#setupsh)
   - [uninstall.sh](#uninstallsh)
 - [Frequently Asked Questions](#frequently-asked-questions)
 - [License](#license)
@@ -64,7 +63,7 @@ This project provides a comprehensive solution for automated file sharing via Ta
 
 The project includes:
 - `tailscale-receive.sh`: The core script that watches for and processes incoming files.
-- `setup.sh`: An automated installer that configures and runs the receiver script as a systemd service.
+- `install.sh`: An automated installer that configures and runs the receiver script as a systemd service.
 - `uninstall.sh`: A script to completely remove the service and all related files.
 - `tailscale-send.sh`: A helper to send files via Taildrop with an interactive device picker and Dolphin right-click integration.
 
@@ -95,30 +94,6 @@ This setup is ideal for users who frequently share files through Tailscale and w
   - `jq` for enhanced device detection (optional, text parsing fallback available).
   - KDE Plasma with Dolphin file manager for context menu integration.
 - **Taildrop must be enabled** in your Tailscale admin console (General settings → Send Files feature).
-
-## Important Configuration
-
-Before you begin the installation, you **must** configure the receiver script to match your system.
-
-Open the `tailscale-receive.sh` file and edit the following variables at the top:
-
-```sh
-# --- Configuration ---
-# IMPORTANT: Set this to the directory where you want files to be saved.
-# The script will create this directory if it doesn't exist.
-# Example: TARGET_DIR="/home/your_username/Downloads/Tailscale/"
-TARGET_DIR="home/azzar/Downloads/tailscale/"
-
-# IMPORTANT: Set this to your Linux username.
-# This ensures you own the files, not root.
-# Example: FIX_OWNER="your_username"
-FIX_OWNER="azzar"
-```
-
-1.  **`TARGET_DIR`**: Change this to the absolute path of the folder where you want received files to be saved.
-2.  **`FIX_OWNER`**: Change this to your Linux username to ensure the script assigns the correct file permissions.
-
-**Save the file before proceeding to the installation.**
 
 ## Taildrop Setup Requirements
 
@@ -160,20 +135,20 @@ Before using the send/receive features, ensure Taildrop is properly configured:
     git clone <repository_url>
     cd tailscale-auto-receiver
     ```
-    Or download `setup.sh`, `tailscale-receive.sh`, and `uninstall.sh` into the same directory.
+    Or download `install.sh`, `tailscale-receive.sh`, and `uninstall.sh` into the same directory.
 
 2.  **Configure the Script**:
     As mentioned in the configuration section, **edit `tailscale-receive.sh`** to set your `TARGET_DIR` and `FIX_OWNER`.
 
 3.  **Make Scripts Executable**:
     ```bash
-    chmod +x setup.sh tailscale-receive.sh uninstall.sh
+    chmod +x install.sh tailscale-receive.sh uninstall.sh
     ```
 
 4.  **Run the Installer**:
     Execute the setup script with `sudo`. It will copy the configured receiver script to a system directory, create the systemd service, and start it.
     ```bash
-    sudo ./setup.sh
+    sudo ./install.sh
     ```
     The service will now be running in the background and will automatically start on boot. The installer also installs `tailscale-send.sh` and a Dolphin service menu.
 
@@ -215,7 +190,7 @@ The setup script supports reinstallation and updates:
 
 **Interactive Mode** (default):
 ```bash
-sudo ./setup.sh
+sudo ./install.sh
 ```
 When an existing installation is detected, you'll be prompted to choose:
 - **Update/Reinstall**: Backup existing config and install new version (recommended)
@@ -224,7 +199,7 @@ When an existing installation is detected, you'll be prompted to choose:
 
 **Non-Interactive Mode** (for automation):
 ```bash
-NONINTERACTIVE=true sudo ./setup.sh
+NONINTERACTIVE=true sudo ./install.sh
 ```
 Automatically performs an update/reinstall without prompting.
 
@@ -397,7 +372,7 @@ sudo nano /usr/local/bin/tailscale-receive.sh
 
 # Or edit the original and reinstall
 nano tailscale-receive.sh
-sudo ./setup.sh
+sudo ./install.sh
 ```
 
 **Available configuration variables:**
@@ -543,7 +518,7 @@ done
 ```
 tailscale_receiver/
 ├── README.md              # This documentation
-├── setup.sh               # Installation script
+├── install.sh               # Installation script
 ├── uninstall.sh           # Removal script
 ├── tailscale-receive.sh   # Receiver service script
 └── tailscale-send.sh      # Sender script with GUI
@@ -621,7 +596,7 @@ It is wired into Dolphin as a context menu action named "Send to device using Ta
 4. Shows desktop notification with results
 5. Returns appropriate exit code
 
-#### `setup.sh`
+#### `install.sh`
 
 This script automates the installation by:
 1.  Copying your configured `tailscale-receive.sh` to `/usr/local/bin`.

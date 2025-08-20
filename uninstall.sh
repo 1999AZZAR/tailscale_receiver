@@ -125,5 +125,10 @@ fi
 echo ""
 print_header "Uninstall Complete!"
 echo "The Tailscale receiver service and all related files have been removed."
+echo ""
+echo "📁 Note: User-specific directories were not removed:"
+echo "  - If you want to remove the Downloads/tailscale/ directory for a specific user,"
+echo "    you can do so manually: rm -rf /home/USERNAME/Downloads/tailscale/"
+echo "  - Replace 'USERNAME' with the actual username that was configured."
 echo "-----------------------------------------------------"
 

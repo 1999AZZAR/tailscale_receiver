@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # --- Configuration ---
-TARGET_DIR="home/azzar/Downloads/tailscale/"
-FIX_OWNER="azzar"
+# These values will be automatically configured by the install script
+TARGET_DIR="/home/user/Downloads/tailscale/"
+FIX_OWNER="user"
 
 # --- Script Starts ---
 echo "✅ Starting Tailscale receiver script with notifications."

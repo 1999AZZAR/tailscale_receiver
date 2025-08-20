@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# Setup Script for Tailscale File Receiver Service
+# Install Script for Tailscale File Receiver Service
 #
 # This script automates the process of installing the tailscale-receive.sh
 # script as a systemd service, allowing it to run automatically on boot.
@@ -10,8 +10,8 @@
 #
 # Instructions:
 # 1. Place this script in the SAME directory as your 'tailscale-receive.sh'.
-# 2. Make this script executable: chmod +x setup.sh
-# 3. Run it with root privileges: sudo ./setup.sh
+# 2. Make this script executable: chmod +x Install.sh
+# 3. Run it with root privileges: sudo ./Install.sh
 # ==============================================================================
 
 # --- Configuration ---
@@ -88,10 +88,77 @@ backup_existing_config() {
   echo "Backup created at: $backup_dir"
 }
 
+# Function to get the target user
+get_target_user() {
+  local default_user=""
+  
+  # Try to get the user who ran sudo
+  if [ -n "$SUDO_USER" ]; then
+    default_user="$SUDO_USER"
+  else
+    # Fallback to the first non-root user with a home directory
+    default_user=$(find /home -maxdepth 1 -type d -name "*" 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
+  fi
+  
+  if [ -z "$default_user" ]; then
+    print_error_and_exit "Could not determine default user. Please specify manually."
+  fi
+  
+  if [ "${NONINTERACTIVE:-false}" = "true" ]; then
+    echo "$default_user"
+    return
+  fi
+  
+  echo "" >&2
+  echo "Which user should receive the Tailscale files?" >&2
+  echo "This user will:" >&2
+  echo "  - Own the received files" >&2
+  echo "  - Receive desktop notifications" >&2
+  echo "  - Have files saved to their Downloads/tailscale/ directory" >&2
+  echo "" >&2
+  
+  while true; do
+    read -r -p "Enter username [$default_user]: " target_user
+    target_user=${target_user:-$default_user}
+    
+    # Validate the user exists
+    if id "$target_user" &>/dev/null; then
+      echo "" >&2
+      echo "✅ User '$target_user' found." >&2
+      break
+    else
+      echo "❌ User '$target_user' does not exist. Please try again." >&2
+    fi
+  done
+  
+  echo "$target_user"
+}
+
+# Function to create and configure the receiver script
+create_receiver_script() {
+  local target_user="$1"
+  local target_dir="/home/$target_user/Downloads/tailscale"
+  
+  # Create the target directory and set ownership
+  mkdir -p "$target_dir"
+  chown "$target_user:$target_user" "$target_dir"
+  
+  # Read the source script and replace the configuration
+  local script_content
+  script_content=$(cat "$SOURCE_SCRIPT")
+  
+  # Replace the configuration section
+  script_content=$(echo "$script_content" | sed "s|TARGET_DIR=.*|TARGET_DIR=\"$target_dir/\"|")
+  script_content=$(echo "$script_content" | sed "s|FIX_OWNER=.*|FIX_OWNER=\"$target_user\"|")
+  
+  # Write the configured script
+  echo "$script_content" > "$DEST_SCRIPT_PATH"
+  chmod +x "$DEST_SCRIPT_PATH"
+}
 
 # --- Script Logic ---
 
-print_header "Tailscale Receiver Service Setup"
+print_header "Tailscale Receiver Service Install"
 
 # 1. Check for root privileges
 if [ "$EUID" -ne 0 ]; then
@@ -100,10 +167,14 @@ fi
 
 # 2. Check if the source script exists in the current directory
 if [ ! -f "$SOURCE_SCRIPT" ]; then
-  print_error_and_exit "The source script '$SOURCE_SCRIPT' was not found. Make sure it's in the same directory as this setup script."
+  print_error_and_exit "The source script '$SOURCE_SCRIPT' was not found. Make sure it's in the same directory as this Install script."
 fi
 
-# 3. Check for existing installation and handle reinstallation
+# 3. Get the target user
+TARGET_USER=$(get_target_user)
+echo "Target user: $TARGET_USER"
+
+# 4. Check for existing installation and handle reinstallation
 if is_service_installed || are_scripts_installed; then
   echo ""
   print_warning "Existing Tailscale Receiver installation detected!"
@@ -163,13 +234,12 @@ if is_service_installed || are_scripts_installed; then
   echo ""
 fi
 
-# 4. Copy and set permissions for the receiver script
+# 5. Create and configure the receiver script
 echo "➡️  Installing the receiver script..."
-cp "$SOURCE_SCRIPT" "$DEST_SCRIPT_PATH" || print_error_and_exit "Failed to copy script to '$DEST_SCRIPT_PATH'."
-chmod +x "$DEST_SCRIPT_PATH" || print_error_and_exit "Failed to make script executable."
-print_success "Receiver script installed to '$DEST_SCRIPT_PATH'."
+create_receiver_script "$TARGET_USER"
+print_success "Receiver script installed to '$DEST_SCRIPT_PATH' (configured for user: $TARGET_USER)."
 
-# 4b. Copy and set permissions for the sender script (for Dolphin context menu)
+# 6. Copy and set permissions for the sender script (for Dolphin context menu)
 if [ -f "$SEND_SOURCE_SCRIPT" ]; then
   echo "➡️  Installing the sender script..."
   cp "$SEND_SOURCE_SCRIPT" "$DEST_SEND_SCRIPT_PATH" || print_error_and_exit "Failed to copy script to '$DEST_SEND_SCRIPT_PATH'."
@@ -179,7 +249,7 @@ else
   echo "⚠️  Sender script '$SEND_SOURCE_SCRIPT' not found. Skipping send integration."
 fi
 
-# 5. Create the systemd service file using a HERE document
+# 7. Create the systemd service file using a HERE document
 echo "➡️  Creating systemd service file..."
 cat > "$SERVICE_FILE_PATH" << EOL
 [Unit]
@@ -201,14 +271,14 @@ WantedBy=multi-user.target
 EOL
 print_success "Service file created at '$SERVICE_FILE_PATH'."
 
-# 6. Reload systemd, enable and start the service
+# 8. Reload systemd, enable and start the service
 echo "➡️  Activating the service..."
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME.service" || print_error_and_exit "Failed to enable the service."
 systemctl start "$SERVICE_NAME.service" || print_error_and_exit "Failed to start the service."
 print_success "Service has been enabled and started."
 
-# 7. Install Dolphin service menu entries (system-wide)
+# 9. Install Dolphin service menu entries (system-wide)
 if [ -f "$DEST_SEND_SCRIPT_PATH" ]; then
   echo "➡️  Installing Dolphin service menu..."
   mkdir -p "$SYS_KIO_SERVICEMENU_DIR" "$SYS_KSERVICES5_SERVICEMENU_DIR"
@@ -238,13 +308,15 @@ Exec=/usr/local/bin/tailscale-send.sh %F
   fi
 fi
 
-# 8. Final status check and confirmation
+# 10. Final status check and confirmation
 echo ""
-print_header "Setup Complete!"
+print_header "Install Complete!"
 echo "The Tailscale receiver service is now running and will start on boot."
 echo ""
 echo "📋 Installation Summary:"
 echo "  ✅ Receiver script: $DEST_SCRIPT_PATH"
+echo "  ✅ Target user: $TARGET_USER"
+echo "  ✅ Target directory: /home/$TARGET_USER/Downloads/tailscale/"
 if [ -f "$DEST_SEND_SCRIPT_PATH" ]; then
   echo "  ✅ Sender script: $DEST_SEND_SCRIPT_PATH"
   echo "  ✅ Dolphin service menu: Installed"
@@ -262,7 +334,7 @@ echo "📁 Test the installation:"
 if [ -f "$DEST_SEND_SCRIPT_PATH" ]; then
   echo "  Send a file: $DEST_SEND_SCRIPT_PATH /path/to/file"
 fi
-echo "  Check received files in your configured TARGET_DIR"
+echo "  Check received files in: /home/$TARGET_USER/Downloads/tailscale/"
 echo ""
 echo "🔄 To update/reinstall: Run this script again"
 echo "🗑️  To uninstall: sudo ./uninstall.sh"
