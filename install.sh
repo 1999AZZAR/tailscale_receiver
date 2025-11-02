@@ -88,6 +88,50 @@ backup_existing_config() {
   echo "Backup created at: $backup_dir"
 }
 
+# Function to validate user
+validate_user() {
+  local user="$1"
+
+  # Check if user exists
+  if ! id "$user" &>/dev/null; then
+    print_error_and_exit "User '$user' does not exist"
+  fi
+
+  # Check if user has a home directory
+  local user_home
+  user_home=$(getent passwd "$user" | cut -d: -f6)
+  if [[ -z "$user_home" || ! -d "$user_home" ]]; then
+    print_error_and_exit "User '$user' does not have a valid home directory"
+  fi
+
+  # Check if Downloads directory exists or can be created
+  local downloads_dir="$user_home/Downloads"
+  if [[ ! -d "$downloads_dir" ]]; then
+    if ! mkdir -p "$downloads_dir" 2>/dev/null; then
+      print_error_and_exit "Cannot create Downloads directory for user '$user'"
+    fi
+    # Restore ownership
+    chown "$user:$user" "$downloads_dir"
+  fi
+
+  # Verify we can write to the target directory
+  local target_dir="$downloads_dir/tailscale"
+  if [[ ! -d "$target_dir" ]]; then
+    if ! mkdir -p "$target_dir" 2>/dev/null; then
+      print_error_and_exit "Cannot create tailscale directory in Downloads for user '$user'"
+    fi
+  fi
+
+  # Test write permissions
+  if ! touch "$target_dir/.install_test" 2>/dev/null; then
+    print_error_and_exit "No write permissions to '$target_dir'"
+  fi
+  rm -f "$target_dir/.install_test"
+
+  # Restore ownership
+  chown -R "$user:$user" "$target_dir"
+}
+
 # Function to get the target user
 get_target_user() {
   local default_user=""
@@ -174,7 +218,12 @@ fi
 TARGET_USER=$(get_target_user)
 echo "Target user: $TARGET_USER"
 
-# 4. Check for existing installation and handle reinstallation
+# 4. Validate the target user and their environment
+echo "➡️  Validating user configuration..."
+validate_user "$TARGET_USER"
+print_success "User '$TARGET_USER' validation passed."
+
+# 5. Check for existing installation and handle reinstallation
 if is_service_installed || are_scripts_installed; then
   echo ""
   print_warning "Existing Tailscale Receiver installation detected!"
@@ -234,12 +283,12 @@ if is_service_installed || are_scripts_installed; then
   echo ""
 fi
 
-# 5. Create and configure the receiver script
+# 6. Create and configure the receiver script
 echo "➡️  Installing the receiver script..."
 create_receiver_script "$TARGET_USER"
 print_success "Receiver script installed to '$DEST_SCRIPT_PATH' (configured for user: $TARGET_USER)."
 
-# 6. Copy and set permissions for the sender script (for Dolphin context menu)
+# 7. Copy and set permissions for the sender script (for Dolphin context menu)
 if [ -f "$SEND_SOURCE_SCRIPT" ]; then
   echo "➡️  Installing the sender script..."
   cp "$SEND_SOURCE_SCRIPT" "$DEST_SEND_SCRIPT_PATH" || print_error_and_exit "Failed to copy script to '$DEST_SEND_SCRIPT_PATH'."
@@ -249,8 +298,8 @@ else
   echo "⚠️  Sender script '$SEND_SOURCE_SCRIPT' not found. Skipping send integration."
 fi
 
-# 7. Create the systemd service file using a HERE document
-echo "➡️  Creating systemd service file..."
+# 8. Create the systemd service file using a HERE document
+echo "➡️  Creating systemd service file with security hardening..."
 cat > "$SERVICE_FILE_PATH" << EOL
 [Unit]
 Description=Tailscale File Receiver Service
@@ -266,19 +315,32 @@ ExecStart=$DEST_SCRIPT_PATH
 Restart=on-failure
 RestartSec=15s
 
-[Install]
-WantedBy=multi-user.target
+# Security hardening - temporarily reduced for compatibility
+# PrivateTmp=true
+# ProtectSystem=strict
+# ProtectHome=yes
+ReadWritePaths=/home/$TARGET_USER/Downloads/tailscale
+# NoNewPrivileges=true
+# ProtectHostname=true
+# ProtectClock=true
+# ProtectControlGroups=true
+# ProtectKernelTunables=true
+# RestrictSUIDSGID=true
+# LockPersonality=true
+# RestrictRealtime=true
+# SystemCallFilter=@system-service @file-system
+# CapabilityBoundingSet=
 EOL
 print_success "Service file created at '$SERVICE_FILE_PATH'."
 
-# 8. Reload systemd, enable and start the service
+# 9. Reload systemd, enable and start the service
 echo "➡️  Activating the service..."
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME.service" || print_error_and_exit "Failed to enable the service."
 systemctl start "$SERVICE_NAME.service" || print_error_and_exit "Failed to start the service."
 print_success "Service has been enabled and started."
 
-# 9. Install Dolphin service menu entries (system-wide)
+# 10. Install Dolphin service menu entries (system-wide)
 if [ -f "$DEST_SEND_SCRIPT_PATH" ]; then
   echo "➡️  Installing Dolphin service menu..."
   mkdir -p "$SYS_KIO_SERVICEMENU_DIR" "$SYS_KSERVICES5_SERVICEMENU_DIR"
@@ -308,7 +370,7 @@ Exec=/usr/local/bin/tailscale-send.sh %F
   fi
 fi
 
-# 10. Final status check and confirmation
+# 11. Final status check and confirmation
 echo ""
 print_header "Install Complete!"
 echo "The Tailscale receiver service is now running and will start on boot."

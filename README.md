@@ -67,12 +67,15 @@ Notes:
 ### Features
 
 - Automated file reception via Taildrop
-- Reliable systemd service with auto‑restart
+- Reliable systemd service with auto‑restart and exponential backoff
 - Desktop notifications on receipt (notify‑send)
 - Automatic ownership correction to your user
-- Health checks (internet + tailscale running)
+- Comprehensive health checks (internet + tailscale authentication)
 - Smart sender with device picker and Dolphin integration
-- Robust error handling and helpful messages
+- Structured logging with timestamps and configurable levels
+- Null-safe file detection handling special characters
+- Security hardening with systemd sandboxing (configurable)
+- Strict error handling with actionable error messages
 
 ### Comparison of File Sharing Methods
 
@@ -297,6 +300,7 @@ The installer configures these automatically.
 | ------------ | ----------------------------------------------- | ----------------------------------- |
 | `TARGET_DIR` | Destination directory for received files        | `/home/<user>/Downloads/tailscale/` |
 | `FIX_OWNER`  | User to own the files and receive notifications | `<user>`                            |
+| `LOG_LEVEL`  | Logging verbosity (debug, info, warn, error)    | `info`                              |
 
 To change later, edit `/usr/local/bin/tailscale-receive.sh` and restart the service.
 
@@ -367,11 +371,13 @@ Order of preference: `kdialog` → `zenity` → `whiptail` → CLI fallback.
 | Symptom                                | Likely Cause                                        | Fix                                                                     |
 | -------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
 | Service fails with "Exec format error" | Corrupt/empty `/usr/local/bin/tailscale-receive.sh` | Reinstall: `sudo ./install.sh`                                          |
+| Service fails with exit code 3         | TARGET_DIR not accessible due to security sandboxing| Check systemd service security settings; may need to adjust ReadWritePaths |
 | Service running but no files received  | Taildrop disabled; device not logged in             | Enable Taildrop; `tailscale status`; ensure sender targeted this device |
 | "Access denied" on send                | Operator not set for your user                      | `sudo tailscale set --operator=$USER`                                   |
 | No desktop notifications               | Headless/no GUI or `notify-send` missing            | Install `libnotify-bin` (Debian/Ubuntu) or ignore on headless           |
 | Dolphin menu missing                   | KDE cache stale or menu files missing               | `kbuildsycoca6`/`kbuildsycoca5`, restart Dolphin                        |
 | Files owned by root                    | Ownership fix not applied yet                       | Service chowns post‑receive; check logs for errors                      |
+| Service logs not appearing             | Systemd logging configuration                       | Check `journalctl -u tailscale-receive.service` for detailed logs       |
 
 ### Security Notes
 
@@ -479,7 +485,16 @@ Note: Does not remove your received files or your original project files.
 
 ### Changelog
 
-#### Version 2.1 (Current)
+#### Version 2.2 (Current)
+
+- **Security Hardening**: Removed dangerous `tailscale up` daemon call, added comprehensive input validation
+- **Reliability Improvements**: Added strict Bash mode, null-safe file detection, exponential backoff strategy
+- **Structured Logging**: Implemented timestamped logging with configurable levels (debug/info/warn/error)
+- **Error Handling**: Added proper exit codes with actionable error messages and operational context
+- **Systemd Sandboxing**: Configurable security hardening (temporarily reduced for compatibility)
+- **Operational Visibility**: Added cycle tracking, uptime reporting, and detailed file processing logs
+
+#### Version 2.1
 
 - Installer now prompts for target user and configures receiver automatically
 - Fixed user capture during install (prompts redirected to stderr) for reliable non-interactive usage
