@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Tailscale Receiver Uninstaller v2.2.1
+
 # ==============================================================================
 # Uninstall Script for Tailscale File Receiver Service
 #
@@ -10,6 +12,9 @@
 # 1. Make this script executable: chmod +x uninstall.sh
 # 2. Run it with root privileges: sudo ./uninstall.sh
 # ==============================================================================
+
+# Version information
+readonly VERSION="2.2.1"
 
 # --- Configuration ---
 # These variables must match the ones in the setup script to ensure
@@ -50,6 +55,12 @@ print_error_and_exit() {
 # --- Script Logic ---
 
 print_header "Tailscale Receiver Service Uninstaller"
+
+# Handle version flag
+if [[ "${1:-}" == "--version" ]] || [[ "${1:-}" == "-v" ]]; then
+  echo "Tailscale Receiver Uninstaller v${VERSION}"
+  exit 0
+fi
 
 # 1. Check for root privileges
 if [ "$EUID" -ne 0 ]; then

@@ -89,6 +89,7 @@ Notes:
 - Null-safe file detection handling special characters
 - Security hardening with systemd sandboxing (configurable)
 - Strict error handling with actionable error messages
+- Automatic archive management (configurable, default 14 days)
 
 ### Comparison of File Sharing Methods
 
@@ -324,6 +325,14 @@ Environment variables that influence the sender:
 | `DEBUG`          | Verbose output                                                | `DEBUG=1`            |
 | `NOTIFY_TIMEOUT` | Notification timeout (seconds)                                | `NOTIFY_TIMEOUT=10`  |
 
+#### Archive Management
+
+| Variable            | Purpose                                               | Example                |
+|-------------------- | ----------------------------------------------------- | ---------------------- |
+| `ARCHIVE_ENABLED`   | Enable/disable automatic archiving                    | `ARCHIVE_ENABLED=true` |
+| `ARCHIVE_DAYS`     | Days after which files are archived                   | `ARCHIVE_DAYS=14`     |
+| `ARCHIVE_DIR_NAME` | Name of archive subdirectory                          | `ARCHIVE_DIR_NAME=archive` |
+
 ### Usage
 
 #### Manage the Service
@@ -343,6 +352,28 @@ Environment variables that influence the sender:
 # Enable/Disable at boot
   sudo systemctl enable tailscale-receive.service
   sudo systemctl disable tailscale-receive.service
+```
+
+#### Archive Management
+
+The service automatically archives old files to keep your main folder tidy. By default:
+
+- Files older than **14 days** are moved to an `archive/` subdirectory
+- Archive management runs continuously in the background
+- Archived files maintain their original timestamps and permissions
+
+```bash
+# Check archived files
+ls -la ~/Downloads/tailscale/archive/
+
+# Disable archiving (set before installing)
+export ARCHIVE_ENABLED=false
+
+# Change archive threshold to 30 days
+export ARCHIVE_DAYS=30
+
+# Use custom archive folder name
+export ARCHIVE_DIR_NAME=old_files
 ```
 
 #### Send Files
@@ -388,6 +419,79 @@ Order of preference: `kdialog` → `zenity` → `whiptail` → CLI fallback.
 | Dolphin menu missing                   | KDE cache stale or menu files missing                 | `kbuildsycoca6`/`kbuildsycoca5`, restart Dolphin                       |
 | Files owned by root                    | Ownership fix not applied yet                         | Service chowns post‑receive; check logs for errors                        |
 | Service logs not appearing             | Systemd logging configuration                         | Check `journalctl -u tailscale-receive.service` for detailed logs        |
+
+## Development
+
+### Code Quality Tools
+
+This project uses several tools to maintain code quality and prevent bugs:
+
+#### Linting and Formatting
+- **ShellCheck**: Static analysis for shell scripts
+- **shfmt**: Code formatter for shell scripts
+- **Git hooks**: Automatic linting and formatting on commit
+
+#### Testing
+- **Bats**: Bash Automated Testing System for unit tests
+- **GitHub Actions**: CI/CD pipeline with automated checks
+
+#### Development Setup
+
+```bash
+# Install development dependencies
+make dev-setup
+
+# Run all checks locally
+make ci
+
+# Format code
+make format
+
+# Run linting
+make lint
+
+# Run tests
+make test
+```
+
+#### Git Hooks
+
+The project includes pre-commit hooks that automatically:
+- Check syntax
+- Run ShellCheck
+- Format code with shfmt
+- Run tests (if available)
+
+To enable hooks:
+```bash
+git config core.hooksPath .githooks
+```
+
+#### Makefile Commands
+
+| Command | Description |
+|---------|-------------|
+| `make help` | Show available commands |
+| `make dev-setup` | Install development tools |
+| `make check-deps` | Check if dependencies are installed |
+| `make lint` | Run shellcheck on all scripts |
+| `make format` | Format shell scripts |
+| `make test` | Run test suite |
+| `make install` | Install the service |
+| `make uninstall` | Uninstall the service |
+| `make status` | Show service status |
+| `make logs` | Show service logs |
+| `make clean` | Clean temporary files |
+| `make validate` | Validate all scripts |
+
+### Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run `make ci` to ensure all checks pass
+5. Commit your changes (hooks will run automatically)
+6. Push and create a pull request
 
 ### Security Notes
 
@@ -495,7 +599,14 @@ Note: Does not remove your received files or your original project files.
 
 ### Changelog
 
-#### Version 2.2 (Current)
+#### Version 2.2.1 (Current)
+
+- **Archive Management**: Automatic archiving of files older than configurable threshold (default 14 days)
+- **Code Quality Infrastructure**: Added comprehensive linting, testing, CI/CD pipeline, and development tools
+- **Preflight Checks**: Enhanced installer with comprehensive system validation before installation
+- **Improved UX**: Interactive setup wizard, better error messages, and safer uninstallation
+
+#### Version 2.2
 
 - **Security Hardening**: Removed dangerous `tailscale up` daemon call, added comprehensive input validation
 - **Reliability Improvements**: Added strict Bash mode, null-safe file detection, exponential backoff strategy

@@ -1,9 +1,12 @@
 #!/bin/bash
 
-# Tailscale Receiver - One-Command Setup Script
+# Tailscale Receiver Setup Script v2.2.1
 # This script provides automated installation for Tailscale Receiver
 
 set -euo pipefail
+
+# Version information
+readonly VERSION="2.2.1"
 
 # Colors for output
 RED='\033[0;31m'
@@ -37,6 +40,12 @@ fi
 
 log_info "🚀 Tailscale Receiver - Automated Setup"
 echo ""
+
+# Handle version flag
+if [[ "${1:-}" == "--version" ]] || [[ "${1:-}" == "-v" ]]; then
+  echo "Tailscale Receiver Setup Script v${VERSION}"
+  exit 0
+fi
 
 # Check if Tailscale is installed
 if ! command -v tailscale >/dev/null 2>&1; then

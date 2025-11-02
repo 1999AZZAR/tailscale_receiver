@@ -1,9 +1,12 @@
 #!/bin/bash
 
-# Tailscale Taildrop sender with interactive device picker
+# Tailscale Taildrop Sender v2.2.1 - Interactive file sending with device picker
 # - Can be invoked from CLI or Dolphin service menu
 
 set -euo pipefail
+
+# Version information
+readonly VERSION="2.2.1"
 
 print_error_and_exit() {
   echo "❌ ERROR: $1" >&2
@@ -159,6 +162,12 @@ send_files() {
 }
 
 main() {
+  # Handle version flag
+  if [[ "${1:-}" == "--version" ]] || [[ "${1:-}" == "-v" ]]; then
+    echo "Tailscale Taildrop Sender v${VERSION}"
+    exit 0
+  fi
+
   ensure_tailscale_ready
 
   # Collect input files; support Dolphin's %F (space-separated) and CLI usage

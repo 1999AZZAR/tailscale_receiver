@@ -1,0 +1,83 @@
+#!/bin/bash
+# Pre-commit hook for Tailscale Receiver
+# Runs linting, formatting, and tests before allowing commits
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+log_info() {
+    echo -e "${GREEN}[INFO]${NC} $*" >&2
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $*" >&2
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $*" >&2
+}
+
+# Get list of staged shell scripts
+STAGED_SCRIPTS=$(git diff --cached --name-only --diff-filter=ACM | grep '\.sh$' || true)
+
+if [ -z "$STAGED_SCRIPTS" ]; then
+    log_info "No shell scripts staged for commit. Skipping checks."
+    exit 0
+fi
+
+log_info "Running pre-commit checks on staged scripts: $STAGED_SCRIPTS"
+
+# Check if required tools are available
+MISSING_TOOLS=""
+command -v shellcheck >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS shellcheck"
+command -v shfmt >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS shfmt"
+
+if [ -n "$MISSING_TOOLS" ]; then
+    log_error "Missing required tools:$MISSING_TOOLS"
+    echo "Install with: sudo apt install$MISSING_TOOLS"
+    echo "Or run: make dev-setup"
+    exit 1
+fi
+
+# Run syntax check
+log_info "Checking syntax..."
+for script in $STAGED_SCRIPTS; do
+    if [ -f "$script" ]; then
+        if ! bash -n "$script"; then
+            log_error "Syntax error in $script"
+            exit 1
+        fi
+    fi
+done
+
+# Run shellcheck
+log_info "Running shellcheck..."
+if ! echo "$STAGED_SCRIPTS" | xargs shellcheck; then
+    log_error "ShellCheck found issues. Fix them before committing."
+    echo "Run: make lint"
+    exit 1
+fi
+
+# Format code (shfmt is non-destructive, so it's safe to run)
+log_info "Formatting code..."
+echo "$STAGED_SCRIPTS" | xargs shfmt -w -i 2
+
+# Re-stage any files that were modified by formatting
+git add $STAGED_SCRIPTS
+
+# Run tests if available
+if [ -d "test" ] && command -v bats >/dev/null 2>&1; then
+    log_info "Running tests..."
+    if ! (cd test && bats *.bats); then
+        log_error "Tests failed. Fix issues before committing."
+        exit 1
+    fi
+fi
+
+log_info "✅ All pre-commit checks passed!"
+exit 0

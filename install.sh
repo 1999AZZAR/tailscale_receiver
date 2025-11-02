@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Tailscale Receiver Installer v2.2.1
 # ==============================================================================
 # Install Script for Tailscale File Receiver Service
 #
@@ -10,9 +11,12 @@
 #
 # Instructions:
 # 1. Place this script in the SAME directory as your 'tailscale-receive.sh'.
-# 2. Make this script executable: chmod +x Install.sh
-# 3. Run it with root privileges: sudo ./Install.sh
+# 2. Make this script executable: chmod +x install.sh
+# 3. Run it with root privileges: sudo ./install.sh
 # ==============================================================================
+
+# Version information
+readonly VERSION="2.2.1"
 
 # --- Configuration ---
 # The original script that needs to be turned into a service.
@@ -328,6 +332,12 @@ show_setup_wizard() {
 # --- Script Logic ---
 
 print_header "Tailscale Receiver Service Install"
+
+# Handle version flag
+if [[ "${1:-}" == "--version" ]] || [[ "${1:-}" == "-v" ]]; then
+  echo "Tailscale Receiver Installer v${VERSION}"
+  exit 0
+fi
 
 # Show setup wizard for interactive installs
 if [ "${NONINTERACTIVE:-false}" != "true" ]; then

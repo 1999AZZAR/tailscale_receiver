@@ -1,9 +1,19 @@
 #!/bin/bash
 
+# Tailscale Receiver v2.2.1 - Automated file reception service
 # Enable strict mode for better error handling
 set -Eeuo pipefail
 IFS=$'\n\t'
 trap 'log_error "Script failed at line $LINENO: $BASH_COMMAND (exit code $?)"' ERR
+
+# --- Configuration ---
+# Version information
+readonly VERSION="2.2.1"
+
+# Archive management settings
+ARCHIVE_ENABLED=${ARCHIVE_ENABLED:-true}
+ARCHIVE_DAYS=${ARCHIVE_DAYS:-14}
+ARCHIVE_DIR_NAME=${ARCHIVE_DIR_NAME:-archive}
 
 # --- Logging Functions ---
 LOG_LEVEL=${LOG_LEVEL:-info}
@@ -79,7 +89,64 @@ validate_config() {
   log_info "Configuration validation successful - Target: $TARGET_DIR, User: $FIX_OWNER"
 }
 
+# Archive management function
+manage_archives() {
+  [[ "$ARCHIVE_ENABLED" != "true" ]] && return 0
+
+  local archive_dir="$TARGET_DIR/$ARCHIVE_DIR_NAME"
+  local days_threshold="$ARCHIVE_DAYS"
+
+  # Create archive directory if it doesn't exist
+  if [[ ! -d "$archive_dir" ]]; then
+    mkdir -p "$archive_dir" || {
+      log_error "Failed to create archive directory: $archive_dir"
+      return 1
+    }
+    log_debug "Created archive directory: $archive_dir"
+  fi
+
+  # Find and move old files
+  local moved_count=0
+  local total_size=0
+
+  # Use find to locate files older than threshold days (excluding the archive directory itself)
+  while IFS= read -r -d '' file; do
+    # Get file size
+    local file_size
+    file_size=$(stat -c%s "$file" 2>/dev/null || echo "0")
+
+    # Move file to archive
+    local filename
+    filename=$(basename "$file")
+    local archive_path="$archive_dir/$filename"
+
+    if mv "$file" "$archive_path" 2>/dev/null; then
+      log_debug "Archived: $filename (${file_size} bytes)"
+      moved_count=$((moved_count + 1))
+      total_size=$((total_size + file_size))
+    else
+      log_warn "Failed to archive: $filename"
+    fi
+  done < <(find "$TARGET_DIR" -maxdepth 1 -type f -mtime "+$days_threshold" -print0 2>/dev/null)
+
+  # Log summary if files were archived
+  if [[ $moved_count -gt 0 ]]; then
+    local total_size_mb
+    total_size_mb=$((total_size / 1024 / 1024))
+    log_info "Archived $moved_count file(s) (${total_size_mb}MB) older than ${days_threshold} days to $ARCHIVE_DIR_NAME/"
+  fi
+
+  return 0
+}
+
 # --- Script Starts ---
+
+# Handle version flag
+if [[ "${1:-}" == "--version" ]] || [[ "${1:-}" == "-v" ]]; then
+  echo "Tailscale Receiver v${VERSION}"
+  exit 0
+fi
+
 log_info "Starting Tailscale receiver service"
 
 # Validate configuration before proceeding
@@ -196,6 +263,9 @@ while true; do
     uptime_minutes=$(( (uptime_seconds % 3600) / 60 ))
     log_info "Service status: ${uptime_hours}h ${uptime_minutes}m uptime, $cycle_count cycles completed, monitoring $TARGET_DIR"
   fi
+
+  # Archive management (runs every cycle, logs only when archiving)
+  manage_archives
 
   log_debug "Cycle $cycle_count completed, sleeping for ${sleep_interval}s"
   sleep "$sleep_interval"
