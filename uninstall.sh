@@ -53,10 +53,65 @@ print_header "Tailscale Receiver Service Uninstaller"
 
 # 1. Check for root privileges
 if [ "$EUID" -ne 0 ]; then
-  print_error_and_exit "This script must be run as root. Please use 'sudo'."
+  print_error_and_exit "This script must be run as root. Please use 'sudo ./uninstall.sh'"
 fi
 
-# 2. Stop and disable the systemd service
+# 2. Show what will be removed
+echo "🔍 Checking for installed components..."
+echo ""
+
+# Check what exists
+local components_found=0
+if systemctl is-active --quiet "$SERVICE_NAME.service" 2>/dev/null || systemctl is-enabled --quiet "$SERVICE_NAME.service" 2>/dev/null; then
+  echo "  📍 Systemd service: $SERVICE_NAME.service (running/enabled)"
+  ((components_found++))
+fi
+if [ -f "$SERVICE_FILE_PATH" ]; then
+  echo "  📍 Service file: $SERVICE_FILE_PATH"
+  ((components_found++))
+fi
+if [ -f "$DEST_SCRIPT_PATH" ]; then
+  echo "  📍 Receiver script: $DEST_SCRIPT_PATH"
+  ((components_found++))
+fi
+if [ -f "$DEST_SEND_SCRIPT_PATH" ]; then
+  echo "  📍 Sender script: $DEST_SEND_SCRIPT_PATH"
+  ((components_found++))
+fi
+if [ -f "$SYS_KIO_SERVICEMENU_DIR/tailscale-send.desktop" ] || [ -f "$SYS_KSERVICES5_SERVICEMENU_DIR/tailscale-send.desktop" ]; then
+  echo "  📍 Dolphin service menu: Installed"
+  ((components_found++))
+fi
+
+if [ $components_found -eq 0 ]; then
+  echo "  ℹ️  No Tailscale Receiver components found."
+  echo ""
+  print_success "Nothing to uninstall. The system is clean."
+  exit 0
+fi
+
+echo ""
+echo "⚠️  This will completely remove Tailscale Receiver from your system."
+echo "   User data in Downloads/tailscale/ will be preserved."
+echo ""
+
+# Confirmation prompt (unless non-interactive)
+if [ "${NONINTERACTIVE:-false}" != "true" ]; then
+  read -r -p "Are you sure you want to uninstall Tailscale Receiver? (y/N): " confirm
+  case "$confirm" in
+    [Yy]|[Yy][Ee][Ss])
+      echo "Proceeding with uninstallation..."
+      ;;
+    *)
+      echo "Uninstallation cancelled."
+      exit 0
+      ;;
+  esac
+fi
+
+echo ""
+
+# 3. Stop and disable the systemd service
 echo "➡️  Disabling the systemd service..."
 # Check if the service is active before trying to stop it
 if systemctl is-active --quiet "$SERVICE_NAME.service"; then
@@ -74,7 +129,7 @@ else
   print_warning "Service was not enabled."
 fi
 
-# 3. Remove the systemd service file
+# 4. Remove the systemd service file
 echo "➡️  Removing service file..."
 if [ -f "$SERVICE_FILE_PATH" ]; then
   rm "$SERVICE_FILE_PATH" || print_error_and_exit "Failed to remove service file."
@@ -83,12 +138,12 @@ else
   print_warning "Service file not found at '$SERVICE_FILE_PATH'."
 fi
 
-# 4. Reload the systemd daemon to apply changes
+# 5. Reload the systemd daemon to apply changes
 echo "➡️  Reloading systemd daemon..."
 systemctl daemon-reload
 print_success "Systemd daemon reloaded."
 
-# 5. Remove the receiver script from /usr/local/bin
+# 6. Remove the receiver script from /usr/local/bin
 echo "➡️  Removing receiver script..."
 if [ -f "$DEST_SCRIPT_PATH" ]; then
   rm "$DEST_SCRIPT_PATH" || print_error_and_exit "Failed to remove the script."
@@ -97,7 +152,7 @@ else
   print_warning "Receiver script not found at '$DEST_SCRIPT_PATH'."
 fi
 
-# 6. Remove the sender script and Dolphin service menus
+# 7. Remove the sender script and Dolphin service menus
 echo "➡️  Removing sender script and Dolphin service menus..."
 if [ -f "$DEST_SEND_SCRIPT_PATH" ]; then
   rm "$DEST_SEND_SCRIPT_PATH" || print_error_and_exit "Failed to remove the sender script."

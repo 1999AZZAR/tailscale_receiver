@@ -44,18 +44,31 @@ Automated Taildrop file reception as a reliable systemd service, plus a convenie
 
 ### Quick Start
 
+#### One-Command Installation (Recommended)
+
 ```bash
-# 1) Make scripts executable
+# Download and install automatically (requires Tailscale to be installed first)
+curl -fsSL https://raw.githubusercontent.com/1999AZZAR/tailscale_receiver/main/setup.sh | bash
+```
+
+#### Manual Installation
+
+```bash
+# 1) Clone or download the repository
+git clone https://github.com/1999AZZAR/tailscale_receiver.git
+cd tailscale_receiver
+
+# 2) Make scripts executable
 chmod +x install.sh uninstall.sh tailscale-receive.sh tailscale-send.sh
 
-# 2) Install (you will be asked which user should receive files)
+# 3) Install (interactive setup wizard will guide you)
 sudo ./install.sh
 
-# 3) Check service and logs
+# 4) Check service and logs
 sudo systemctl status tailscale-receive.service
 sudo journalctl -u tailscale-receive.service -f
 
-# 4) Optional: test sender
+# 5) Optional: test sender
 /usr/local/bin/tailscale-send.sh --help
 ```
 
@@ -79,19 +92,19 @@ Notes:
 
 ### Comparison of File Sharing Methods
 
-| Feature                 | `tailscale_receiver`                                                                                   | NFS (Network File System)                                                                        | FTP (File Transfer Protocol)                                                         | SMB (Server Message Block)                                                  |
-|:----------------------- |:------------------------------------------------------------------------------------------------------ |:------------------------------------------------------------------------------------------------ |:------------------------------------------------------------------------------------ |:--------------------------------------------------------------------------- |
-| Method Used             | Taildrop (peer‑to‑peer over secure Tailscale network)                                                  | Mounting shares (remote directories appear local)                                                | Client‑server (upload/download to a server)                                          | Network share access (shared folders/resources)                             |
-| Ease of Use             | Easy. Designed for simplicity and automation in a Tailscale network.                                   | Moderate–Difficult. Requires server and client config, `/etc/exports`, firewall, automount, etc. | Easy. Many graphical clients; SFTP/FTPS variants common.                             | Easy. Native on Windows; good support via Samba on Linux and macOS.         |
-| Security                | High. Tailscale’s end‑to‑end encryption and identity.                                                  | Moderate. Can be complex; often relies on LAN isolation, Kerberos, or TLS extensions.            | Low by default (FTP is plaintext). Use SFTP (over SSH) or FTPS for security.         | Moderate–High. SMBv3 supports encryption/signing; depends on configuration. |
-| Performance             | Good. Limited by Tailscale overlay and path between peers.                                             | High. Excellent on LAN; kernel‑level I/O.                                                        | Good. Typically adequate for transfers; latency‑sensitive control channel.           | High. Very fast on LAN; improved with SMBv3 multichannel and modern stacks. |
-| Use Case                | Securely and automatically receive files from your Tailnet devices; personal and small team workflows. | Share directories as if local across Unix/Linux systems; POSIX semantics.                        | Simple uploads/downloads; legacy integrations; public file distribution (anonymous). | Windows file/print shares; mixed‑OS LAN environments; AD integration.       |
-| Platform Support        | Linux (scripts target `systemd`), works with any Tailnet devices as senders.                           | Primarily Linux/Unix; clients exist for other OSes.                                              | Cross‑platform (FTP/SFTP/FTPS clients abundant).                                     | Primarily Windows; widely supported on Linux (Samba) and macOS.             |
-| Setup Complexity        | Low. Install and choose user; no port forwarding or firewall tweaks.                                   | Medium–High. Export lists, uid/gid mapping, firewall rules.                                      | Low–Medium. Stand up an FTP/SFTP server, manage users/keys, open ports.              | Medium. Configure Samba/Windows shares, permissions, and firewall.          |
-| NAT/Firewall Traversal  | Excellent. Uses Tailscale’s NAT traversal; no inbound ports.                                           | Poor–Moderate. Usually LAN only or needs VPN/ports.                                              | Moderate. Requires open ports (20/21 for FTP, 22 for SFTP, 990/989 for FTPS).        | Moderate. Requires open ports (e.g., 445), often LAN or VPN.                |
-| Identity/Access Control | Tailnet identity; access scoped to your devices.                                                       | OS‑level users/groups; Kerberos/LDAP possible.                                                   | Local server accounts or system users/SSH keys.                                      | AD/LDAP or local users; granular share/file ACLs.                           |
-| Offline Behavior        | Queue on sender; receiver processes on next loop when online.                                          | Not applicable; mount must be reachable.                                                         | Server must be reachable; clients retry/reconnect.                                   | Server must be reachable; clients retry/reconnect.                          |
-| Best For                | Quick, secure, zero‑exposure transfers within a personal/team Tailnet.                                 | Seamless remote filesystem access and POSIX workflows.                                           | Interop with legacy systems and simple public distribution via hardened variants.    | Windows‑centric networks needing shared folders and permissions.            |
+| Feature                 | `tailscale_receiver`                                                                                 | NFS (Network File System)                                                                          | FTP (File Transfer Protocol)                                                         | SMB (Server Message Block)                                                   |
+| :---------------------- | :----------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------- | :--------------------------------------------------------------------------- |
+| Method Used             | Taildrop (peer‑to‑peer over secure Tailscale network)                                                | Mounting shares (remote directories appear local)                                                  | Client‑server (upload/download to a server)                                         | Network share access (shared folders/resources)                              |
+| Ease of Use             | Easy. Designed for simplicity and automation in a Tailscale network.                                   | Moderate–Difficult. Requires server and client config,`/etc/exports`, firewall, automount, etc. | Easy. Many graphical clients; SFTP/FTPS variants common.                             | Easy. Native on Windows; good support via Samba on Linux and macOS.          |
+| Security                | High. Tailscale’s end‑to‑end encryption and identity.                                               | Moderate. Can be complex; often relies on LAN isolation, Kerberos, or TLS extensions.              | Low by default (FTP is plaintext). Use SFTP (over SSH) or FTPS for security.         | Moderate–High. SMBv3 supports encryption/signing; depends on configuration. |
+| Performance             | Good. Limited by Tailscale overlay and path between peers.                                             | High. Excellent on LAN; kernel‑level I/O.                                                         | Good. Typically adequate for transfers; latency‑sensitive control channel.          | High. Very fast on LAN; improved with SMBv3 multichannel and modern stacks.  |
+| Use Case                | Securely and automatically receive files from your Tailnet devices; personal and small team workflows. | Share directories as if local across Unix/Linux systems; POSIX semantics.                          | Simple uploads/downloads; legacy integrations; public file distribution (anonymous). | Windows file/print shares; mixed‑OS LAN environments; AD integration.       |
+| Platform Support        | Linux (scripts target `systemd`), works with any Tailnet devices as senders.                         | Primarily Linux/Unix; clients exist for other OSes.                                                | Cross‑platform (FTP/SFTP/FTPS clients abundant).                                    | Primarily Windows; widely supported on Linux (Samba) and macOS.              |
+| Setup Complexity        | Low. Install and choose user; no port forwarding or firewall tweaks.                                   | Medium–High. Export lists, uid/gid mapping, firewall rules.                                       | Low–Medium. Stand up an FTP/SFTP server, manage users/keys, open ports.             | Medium. Configure Samba/Windows shares, permissions, and firewall.           |
+| NAT/Firewall Traversal  | Excellent. Uses Tailscale’s NAT traversal; no inbound ports.                                          | Poor–Moderate. Usually LAN only or needs VPN/ports.                                               | Moderate. Requires open ports (20/21 for FTP, 22 for SFTP, 990/989 for FTPS).        | Moderate. Requires open ports (e.g., 445), often LAN or VPN.                 |
+| Identity/Access Control | Tailnet identity; access scoped to your devices.                                                       | OS‑level users/groups; Kerberos/LDAP possible.                                                    | Local server accounts or system users/SSH keys.                                      | AD/LDAP or local users; granular share/file ACLs.                            |
+| Offline Behavior        | Queue on sender; receiver processes on next loop when online.                                          | Not applicable; mount must be reachable.                                                           | Server must be reachable; clients retry/reconnect.                                   | Server must be reachable; clients retry/reconnect.                           |
+| Best For                | Quick, secure, zero‑exposure transfers within a personal/team Tailnet.                                | Seamless remote filesystem access and POSIX workflows.                                             | Interop with legacy systems and simple public distribution via hardened variants.    | Windows‑centric networks needing shared folders and permissions.            |
 
 ### Quick Setup Examples
 
@@ -188,29 +201,26 @@ sudo mount -t cifs //server/public /mnt/smb -o guest,uid=$(id -u),gid=$(id -g)
 ### Taildrop Setup Requirements
 
 1) Enable Taildrop in your tailnet admin
-   
+
    ```bash
    # Visit your admin console and enable "Send Files"
    ```
-
 2) Verify Tailscale status
-   
+
    ```bash
    tailscale status
    ```
-
 3) Optional: basic Taildrop smoke test
-   
+
    ```bash
    # List pending receives
    tailscale file get
-   
+
    # Send to another device (replace device-name)
    tailscale file cp /path/to/test/file device-name:
    ```
-
 4) Allow your user to send without sudo (recommended)
-   
+
    ```bash
    sudo tailscale set --operator=$USER
    ```
@@ -219,12 +229,12 @@ sudo mount -t cifs //server/public /mnt/smb -o guest,uid=$(id -u),gid=$(id -g)
 
 1) Obtain the files (clone or download). Place scripts in one directory.
 2) Make scripts executable:
-   
+
    ```bash
    chmod +x install.sh uninstall.sh tailscale-receive.sh tailscale-send.sh
    ```
 3) Run the installer (asks for your target user and configures automatically):
-   
+
    ```bash
    sudo ./install.sh
    ```
@@ -252,13 +262,13 @@ chmod +x install.sh tailscale-receive.sh tailscale-send.sh; sudo ./install.sh'
 
 #### What Gets Installed
 
-| Item               | Path                                                        | Purpose                                      |
-| ------------------ | ----------------------------------------------------------- | -------------------------------------------- |
+| Item               | Path                                                          | Purpose                                       |
+| ------------------ | ------------------------------------------------------------- | --------------------------------------------- |
 | Receiver script    | `/usr/local/bin/tailscale-receive.sh`                       | Auto‑accept Taildrop files                   |
 | Systemd unit       | `/etc/systemd/system/tailscale-receive.service`             | Run service at boot; auto‑restart            |
-| Sender script      | `/usr/local/bin/tailscale-send.sh`                          | Interactive Taildrop sender                  |
+| Sender script      | `/usr/local/bin/tailscale-send.sh`                          | Interactive Taildrop sender                   |
 | Dolphin (KF6) menu | `/usr/share/kio/servicemenus/tailscale-send.desktop`        | Right‑click "Send to device using Tailscale" |
-| Dolphin (KF5) menu | `/usr/share/kservices5/ServiceMenus/tailscale-send.desktop` | Same for KF5                                 |
+| Dolphin (KF5) menu | `/usr/share/kservices5/ServiceMenus/tailscale-send.desktop` | Same for KF5                                  |
 
 Systemd details:
 
@@ -296,8 +306,8 @@ Backups of prior install are saved to `/tmp/tailscale-receiver-backup-YYYYMMDD-H
 
 The installer configures these automatically.
 
-| Variable     | Meaning                                         | Example                             |
-| ------------ | ----------------------------------------------- | ----------------------------------- |
+| Variable       | Meaning                                         | Example                               |
+| -------------- | ----------------------------------------------- | ------------------------------------- |
 | `TARGET_DIR` | Destination directory for received files        | `/home/<user>/Downloads/tailscale/` |
 | `FIX_OWNER`  | User to own the files and receive notifications | `<user>`                            |
 | `LOG_LEVEL`  | Logging verbosity (debug, info, warn, error)    | `info`                              |
@@ -308,11 +318,11 @@ To change later, edit `/usr/local/bin/tailscale-receive.sh` and restart the serv
 
 Environment variables that influence the sender:
 
-| Variable         | Purpose                                               | Example              |
-| ---------------- | ----------------------------------------------------- | -------------------- |
+| Variable           | Purpose                                                       | Example                |
+| ------------------ | ------------------------------------------------------------- | ---------------------- |
 | `DIALOG_TOOL`    | Force picker (`kdialog`, `zenity`, `whiptail`, `cli`) | `DIALOG_TOOL=zenity` |
-| `DEBUG`          | Verbose output                                        | `DEBUG=1`            |
-| `NOTIFY_TIMEOUT` | Notification timeout (seconds)                        | `NOTIFY_TIMEOUT=10`  |
+| `DEBUG`          | Verbose output                                                | `DEBUG=1`            |
+| `NOTIFY_TIMEOUT` | Notification timeout (seconds)                                | `NOTIFY_TIMEOUT=10`  |
 
 ### Usage
 
@@ -368,16 +378,16 @@ Order of preference: `kdialog` → `zenity` → `whiptail` → CLI fallback.
 
 ### Troubleshooting
 
-| Symptom                                | Likely Cause                                        | Fix                                                                     |
-| -------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
-| Service fails with "Exec format error" | Corrupt/empty `/usr/local/bin/tailscale-receive.sh` | Reinstall: `sudo ./install.sh`                                          |
-| Service fails with exit code 3         | TARGET_DIR not accessible due to security sandboxing| Check systemd service security settings; may need to adjust ReadWritePaths |
-| Service running but no files received  | Taildrop disabled; device not logged in             | Enable Taildrop; `tailscale status`; ensure sender targeted this device |
-| "Access denied" on send                | Operator not set for your user                      | `sudo tailscale set --operator=$USER`                                   |
-| No desktop notifications               | Headless/no GUI or `notify-send` missing            | Install `libnotify-bin` (Debian/Ubuntu) or ignore on headless           |
-| Dolphin menu missing                   | KDE cache stale or menu files missing               | `kbuildsycoca6`/`kbuildsycoca5`, restart Dolphin                        |
-| Files owned by root                    | Ownership fix not applied yet                       | Service chowns post‑receive; check logs for errors                      |
-| Service logs not appearing             | Systemd logging configuration                       | Check `journalctl -u tailscale-receive.service` for detailed logs       |
+| Symptom                                | Likely Cause                                          | Fix                                                                        |
+| -------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------- |
+| Service fails with "Exec format error" | Corrupt/empty `/usr/local/bin/tailscale-receive.sh` | Reinstall:`sudo ./install.sh`                                            |
+| Service fails with exit code 3         | TARGET_DIR not accessible due to security sandboxing  | Check systemd service security settings; may need to adjust ReadWritePaths |
+| Service running but no files received  | Taildrop disabled; device not logged in               | Enable Taildrop;`tailscale status`; ensure sender targeted this device   |
+| "Access denied" on send                | Operator not set for your user                        | `sudo tailscale set --operator=$USER`                                    |
+| No desktop notifications               | Headless/no GUI or `notify-send` missing            | Install `libnotify-bin` (Debian/Ubuntu) or ignore on headless            |
+| Dolphin menu missing                   | KDE cache stale or menu files missing                 | `kbuildsycoca6`/`kbuildsycoca5`, restart Dolphin                       |
+| Files owned by root                    | Ownership fix not applied yet                         | Service chowns post‑receive; check logs for errors                        |
+| Service logs not appearing             | Systemd logging configuration                         | Check `journalctl -u tailscale-receive.service` for detailed logs        |
 
 ### Security Notes
 

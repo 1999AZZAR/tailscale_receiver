@@ -88,6 +88,97 @@ backup_existing_config() {
   echo "Backup created at: $backup_dir"
 }
 
+# Function to perform preflight checks
+preflight_checks() {
+  echo "🔍 Performing preflight checks..."
+
+  local issues_found=0
+
+  # Check for root privileges
+  if [ "$EUID" -ne 0 ]; then
+    echo "❌ ERROR: This script must be run as root. Please use 'sudo ./install.sh'"
+    echo "   Solution: sudo ./install.sh"
+    exit 1
+  fi
+
+  # Check for systemd
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "❌ ERROR: systemd is required but not found."
+    echo "   This script requires a systemd-based Linux distribution."
+    echo "   Compatible systems: Ubuntu, Debian, Fedora, Arch, CentOS, etc."
+    exit 1
+  fi
+
+  # Check for Tailscale
+  if ! command -v tailscale >/dev/null 2>&1; then
+    echo "❌ ERROR: Tailscale is not installed."
+    echo "   Please install Tailscale first:"
+    echo "   - Ubuntu/Debian: curl -fsSL https://tailscale.com/install.sh | sh"
+    echo "   - Other systems: Visit https://tailscale.com/download"
+    exit 1
+  fi
+
+  # Check Tailscale status
+  if ! tailscale status >/dev/null 2>&1; then
+    echo "⚠️  WARNING: Tailscale is installed but not logged in."
+    echo "   The service will install successfully, but you'll need to authenticate:"
+    echo "   sudo tailscale up"
+    echo "   Or set TS_AUTHKEY environment variable for automated setup."
+    echo ""
+    ((issues_found++))
+  else
+    echo "✅ Tailscale is installed and authenticated"
+  fi
+
+  # Check for notify-send (optional but recommended)
+  if ! command -v notify-send >/dev/null 2>&1; then
+    echo "⚠️  WARNING: notify-send not found (desktop notifications disabled)."
+    echo "   Install libnotify-bin (Ubuntu/Debian) for desktop notifications."
+    echo "   This is optional - the service will work without it."
+    echo ""
+  else
+    echo "✅ Desktop notifications available"
+  fi
+
+  # Check for required tools
+  local required_tools=("ping" "chown" "runuser")
+  for tool in "${required_tools[@]}"; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      echo "❌ ERROR: Required tool '$tool' not found."
+      echo "   This tool is usually part of the base system. Please check your installation."
+      exit 1
+    fi
+  done
+
+  # Check for GUI tools (optional)
+  local gui_tools=("kdialog" "zenity" "whiptail")
+  local gui_available=false
+  for tool in "${gui_tools[@]}"; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      gui_available=true
+      break
+    fi
+  done
+
+  if [ "$gui_available" = false ]; then
+    echo "⚠️  WARNING: No GUI dialog tools found (kdialog, zenity, whiptail)."
+    echo "   The sender script will fall back to command-line interface."
+    echo "   Install 'kdialog' (KDE), 'zenity' (GNOME), or 'whiptail' (console) for better UX."
+    echo ""
+  else
+    echo "✅ GUI dialog tools available"
+  fi
+
+  # Summary
+  if [ $issues_found -eq 0 ]; then
+    echo "✅ All preflight checks passed!"
+  else
+    echo "⚠️  Some optional checks failed, but installation can proceed."
+  fi
+
+  echo ""
+}
+
 # Function to validate user
 validate_user() {
   local user="$1"
@@ -200,14 +291,51 @@ create_receiver_script() {
   chmod +x "$DEST_SCRIPT_PATH"
 }
 
+# Function to show interactive setup wizard
+show_setup_wizard() {
+  echo "🚀 Welcome to Tailscale Receiver Setup Wizard!"
+  echo ""
+  echo "This wizard will help you set up automated file receiving via Tailscale."
+  echo "The service will automatically accept files sent to your device."
+  echo ""
+  echo "📋 What this setup will do:"
+  echo "  • Install a background service that monitors for incoming files"
+  echo "  • Set up automatic file ownership correction"
+  echo "  • Configure desktop notifications (if available)"
+  echo "  • Install a sender script for easy file sharing"
+  echo "  • Add Dolphin (KDE) right-click integration"
+  echo ""
+  echo "📁 Files will be saved to: ~/Downloads/tailscale/"
+  echo "🔐 Requires Tailscale to be installed and authenticated"
+  echo ""
+
+  if [ "${NONINTERACTIVE:-false}" != "true" ]; then
+    read -r -p "Continue with setup? (Y/n): " setup_confirm
+    case "$setup_confirm" in
+      [Nn]|[Nn][Oo])
+        echo "Setup cancelled. You can run this again anytime."
+        exit 0
+        ;;
+      *)
+        echo "Starting setup..."
+        ;;
+    esac
+  fi
+
+  echo ""
+}
+
 # --- Script Logic ---
 
 print_header "Tailscale Receiver Service Install"
 
-# 1. Check for root privileges
-if [ "$EUID" -ne 0 ]; then
-  print_error_and_exit "This script must be run as root. Please use 'sudo'."
+# Show setup wizard for interactive installs
+if [ "${NONINTERACTIVE:-false}" != "true" ]; then
+  show_setup_wizard
 fi
+
+# 1. Perform preflight checks
+preflight_checks
 
 # 2. Check if the source script exists in the current directory
 if [ ! -f "$SOURCE_SCRIPT" ]; then
