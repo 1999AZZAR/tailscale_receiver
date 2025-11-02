@@ -117,23 +117,33 @@ send_files() {
     fi
 
     echo "Sending: $file" >&2
-    
-    # Capture both stdout and stderr to see what's happening
-    if output=$(tailscale file cp "$file" "$device:" 2>&1); then
-      echo "Successfully sent: $file" >&2
+
+    # Start file transfer in background since tailscale file cp is interactive
+    # We can't reliably detect completion, so assume success if it starts
+    tailscale file cp "$file" "$device:" >/dev/null 2>&1 &
+    transfer_pid=$!
+
+    # Give it a moment to start
+    sleep 1
+
+    # Check if process is still running (transfer in progress) or exited successfully
+    if kill -0 $transfer_pid 2>/dev/null; then
+      # Process still running - transfer likely started successfully
+      echo "Transfer started: $file" >&2
       sent_count=$((sent_count+1))
+      # Detach from the process
+      disown $transfer_pid
     else
-      echo "Failed to send: $file" >&2
-      echo "Error output: $output" >&2
-      
-      # Check if it's a permission error and provide guidance
-      if echo "$output" | grep -q "Access denied: file access denied"; then
-        echo "💡 This is a permissions issue. Try one of these solutions:" >&2
-        echo "   1. Run: sudo tailscale set --operator=\$USER" >&2
-        echo "   2. Or use sudo: sudo tailscale file cp \"$file\" \"$device:\"" >&2
+      # Process exited - check exit code
+      wait $transfer_pid 2>/dev/null
+      exit_code=$?
+      if [ $exit_code -eq 0 ]; then
+        echo "Transfer completed: $file" >&2
+        sent_count=$((sent_count+1))
+      else
+        echo "Transfer failed: $file" >&2
+        failed_count=$((failed_count+1))
       fi
-      
-      failed_count=$((failed_count+1))
     fi
   done
 
