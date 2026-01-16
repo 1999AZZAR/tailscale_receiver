@@ -1,0 +1,35 @@
+[Unit]
+Description=Tailscale File Receiver Service
+Documentation=https://github.com/1999AZZAR/tailscale_receiver
+After=network-online.target tailscale.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+EnvironmentFile=-/etc/default/tailscale-receive
+ExecStart=/usr/local/bin/tailscale-receive.sh
+Restart=on-failure
+RestartSec=15s
+
+# Security hardening
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=true
+ProtectHostname=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallFilter=@system-service @file-system
+CapabilityBoundingSet=
+
+# ReadWritePaths will be set by postinst based on TARGET_USER
+ReadWritePaths=
+
+[Install]
+WantedBy=multi-user.target

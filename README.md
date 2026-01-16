@@ -84,12 +84,16 @@ Notes:
 - Desktop notifications on receipt (notify‑send)
 - Automatic ownership correction to your user
 - Comprehensive health checks (internet + tailscale authentication)
-- Smart sender with device picker and Dolphin integration
+- Smart sender with device picker and Dolphin/Nautilus integration
 - Structured logging with timestamps and configurable levels
 - Null-safe file detection handling special characters
 - Security hardening with systemd sandboxing (configurable)
 - Strict error handling with actionable error messages
 - Automatic archive management (configurable, default 14 days)
+- **Directory support**: Receive both files and directories with recursive ownership
+- **Single-instance protection**: Prevents duplicate service processes
+- **Power-efficient timer mode**: Optional systemd timer for battery-powered devices
+- **Environment-based configuration**: Secure config via `/etc/default/tailscale-receive`
 
 ### Comparison of File Sharing Methods
 
@@ -270,6 +274,7 @@ chmod +x install.sh tailscale-receive.sh tailscale-send.sh; sudo ./install.sh'
 | Sender script      | `/usr/local/bin/tailscale-send.sh`                          | Interactive Taildrop sender                   |
 | Dolphin (KF6) menu | `/usr/share/kio/servicemenus/tailscale-send.desktop`        | Right‑click "Send to device using Tailscale" |
 | Dolphin (KF5) menu | `/usr/share/kservices5/ServiceMenus/tailscale-send.desktop` | Same for KF5                                  |
+| Nautilus script    | `~/.local/share/nautilus/scripts/Send to device using Tailscale` | GNOME right‑click integration                |
 
 Systemd details:
 
@@ -333,6 +338,305 @@ Environment variables that influence the sender:
 | `ARCHIVE_DAYS`     | Days after which files are archived                   | `ARCHIVE_DAYS=14`     |
 | `ARCHIVE_DIR_NAME` | Name of archive subdirectory                          | `ARCHIVE_DIR_NAME=archive` |
 
+#### Polling and Performance
+
+| Variable                | Purpose                                               | Example                    |
+|------------------------ | ----------------------------------------------------- | -------------------------- |
+| `POLL_INTERVAL`         | Base polling interval between checks (seconds)        | `POLL_INTERVAL=15`        |
+| `HEALTH_CHECK_INTERVAL` | How often to perform full health checks (cycles)      | `HEALTH_CHECK_INTERVAL=30` |
+| `NETWORK_TIMEOUT`       | Network connectivity check timeout (seconds)          | `NETWORK_TIMEOUT=1`       |
+| `TAILSCALE_TIMEOUT`     | Tailscale status check timeout (seconds)              | `TAILSCALE_TIMEOUT=5`     |
+| `MAX_BACKOFF`           | Maximum exponential backoff time (seconds)            | `MAX_BACKOFF=300`         |
+| `NOTIFICATION_THROTTLE` | Minimum seconds between desktop notifications         | `NOTIFICATION_THROTTLE=5` |
+
+#### File Integrity Verification
+
+| Variable                    | Purpose                                               | Example                          |
+|---------------------------- | ----------------------------------------------------- | -------------------------------- |
+| `INTEGRITY_CHECK_ENABLED`   | Enable/disable file integrity verification            | `INTEGRITY_CHECK_ENABLED=true`  |
+| `INTEGRITY_CHECK_ALGORITHM` | Hash algorithm for verification                       | `INTEGRITY_CHECK_ALGORITHM=sha256` |
+| `INTEGRITY_CHECK_TIMEOUT`   | Timeout for integrity checks (seconds)                | `INTEGRITY_CHECK_TIMEOUT=30`    |
+| `INTEGRITY_CHECK_MAX_SIZE`  | Maximum file size for integrity checks (bytes)        | `INTEGRITY_CHECK_MAX_SIZE=1073741824` |
+
+#### File Type Filtering
+
+| Variable                    | Purpose                                               | Example                          |
+|---------------------------- | ----------------------------------------------------- | -------------------------------- |
+| `FILE_FILTER_ENABLED`       | Enable/disable file type filtering                    | `FILE_FILTER_ENABLED=true`      |
+| `FILE_FILTER_MODE`          | allow/deny mode for filters                           | `FILE_FILTER_MODE=allow`        |
+| `FILE_FILTER_MIME_TYPES`    | Comma-separated allowed/denied MIME types             | `FILE_FILTER_MIME_TYPES=text/plain,image/*` |
+| `FILE_FILTER_EXTENSIONS`    | Comma-separated allowed/denied extensions             | `FILE_FILTER_EXTENSIONS=pdf,doc,txt` |
+| `FILE_FILTER_MAX_SIZE`      | Maximum file size for filtering (bytes)               | `FILE_FILTER_MAX_SIZE=104857600` |
+
+#### Virus Scanning
+
+| Variable                    | Purpose                                               | Example                          |
+|---------------------------- | ----------------------------------------------------- | -------------------------------- |
+| `VIRUS_SCAN_ENABLED`        | Enable/disable virus scanning                         | `VIRUS_SCAN_ENABLED=true`       |
+| `VIRUS_SCAN_ENGINE`         | Scanning engine                                       | `VIRUS_SCAN_ENGINE=clamav`      |
+| `VIRUS_SCAN_TIMEOUT`        | Scan timeout (seconds)                                | `VIRUS_SCAN_TIMEOUT=60`         |
+| `VIRUS_SCAN_QUARANTINE`     | Quarantine infected files                             | `VIRUS_SCAN_QUARANTINE=true`    |
+
+#### Rate Limiting & Abuse Protection
+
+| Variable                        | Purpose                                               | Example                          |
+|-------------------------------- | ----------------------------------------------------- | -------------------------------- |
+| `RATE_LIMIT_ENABLED`            | Enable/disable rate limiting                         | `RATE_LIMIT_ENABLED=true`       |
+| `RATE_LIMIT_FILES_PER_MINUTE`   | Maximum files per minute                              | `RATE_LIMIT_FILES_PER_MINUTE=60` |
+| `RATE_LIMIT_FILES_PER_HOUR`     | Maximum files per hour                                | `RATE_LIMIT_FILES_PER_HOUR=500` |
+| `RATE_LIMIT_SIZE_PER_MINUTE`    | Maximum size per minute (bytes)                       | `RATE_LIMIT_SIZE_PER_MINUTE=104857600` |
+| `RATE_LIMIT_SIZE_PER_HOUR`      | Maximum size per hour (bytes)                         | `RATE_LIMIT_SIZE_PER_HOUR=1073741824` |
+| `RATE_LIMIT_BLOCK_DURATION`     | Block duration when limits exceeded (seconds)         | `RATE_LIMIT_BLOCK_DURATION=300` |
+| `RATE_LIMIT_RESET_INTERVAL`     | Statistics reset interval (seconds)                   | `RATE_LIMIT_RESET_INTERVAL=60`  |
+
+**Security Examples:**
+```bash
+# Enable integrity checking for all files
+INTEGRITY_CHECK_ENABLED=true
+INTEGRITY_CHECK_ALGORITHM=sha256
+
+# File type filtering - allow only safe types
+FILE_FILTER_ENABLED=true
+FILE_FILTER_MODE=allow
+FILE_FILTER_MIME_TYPES=text/plain,text/*,image/*,application/pdf
+FILE_FILTER_EXTENSIONS=pdf,doc,docx,txt,jpg,png,gif
+
+# File type filtering - deny dangerous types
+FILE_FILTER_ENABLED=true
+FILE_FILTER_MODE=deny
+FILE_FILTER_EXTENSIONS=exe,dll,scr,com,pif,bat,cmd,vbs,js,jar
+
+# Virus scanning with quarantine
+VIRUS_SCAN_ENABLED=true
+VIRUS_SCAN_QUARANTINE=true
+VIRUS_SCAN_TIMEOUT=120
+
+# Rate limiting for abuse protection
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_FILES_PER_MINUTE=30      # 30 files/minute
+RATE_LIMIT_FILES_PER_HOUR=200       # 200 files/hour
+RATE_LIMIT_SIZE_PER_MINUTE=52428800 # 50MB/minute
+
+# Enterprise security stack
+INTEGRITY_CHECK_ENABLED=true
+FILE_FILTER_ENABLED=true
+FILE_FILTER_MODE=allow
+VIRUS_SCAN_ENABLED=true
+RATE_LIMIT_ENABLED=true
+```
+
+#### Health Endpoint
+
+| Variable                    | Purpose                                               | Example                          |
+|---------------------------- | ----------------------------------------------------- | -------------------------------- |
+| `HEALTH_ENDPOINT_ENABLED`   | Enable/disable HTTP health endpoint                   | `HEALTH_ENDPOINT_ENABLED=true`  |
+| `HEALTH_ENDPOINT_PORT`      | Port for health endpoint server                       | `HEALTH_ENDPOINT_PORT=8080`     |
+| `HEALTH_ENDPOINT_PATH`      | HTTP path for health checks                           | `HEALTH_ENDPOINT_PATH=/health`  |
+
+**Monitoring Examples:**
+```bash
+# Enable health monitoring
+HEALTH_ENDPOINT_ENABLED=true
+HEALTH_ENDPOINT_PORT=8080
+
+# Custom endpoint path
+HEALTH_ENDPOINT_PATH=/api/health
+
+# Integrate with monitoring systems
+curl http://localhost:8080/health
+```
+
+**Health Response Example:**
+```json
+{
+  "status": "healthy",
+  "timestamp": 1703123456,
+  "uptime": 3600,
+  "last_successful_cycle": 1703123450,
+  "cycles_completed": 120,
+  "files_processed": 15,
+  "files_failed": 0,
+  "consecutive_failures": 0
+}
+```
+
+#### Configuration Migration
+
+The service automatically migrates configuration files when upgrading between versions:
+
+- **Automatic Detection**: Detects configuration version and applies necessary migrations
+- **Backup Creation**: Creates timestamped backups before migration
+- **Version Tracking**: Uses `CONFIG_VERSION` to track configuration schema versions
+- **Backward Compatibility**: Maintains compatibility with older configuration formats
+
+**Migration Examples:**
+```bash
+# Pre-2.3.0 configurations are automatically migrated on first run
+# Backups are created: /etc/default/tailscale-receive.backup.YYYYMMDD_HHMMSS
+
+# Check migration logs
+sudo journalctl -u tailscale-receive.service | grep -i migrat
+```
+
+## 📦 **Package Installation**
+
+### Debian/Ubuntu (.deb)
+
+**Install from repository:**
+```bash
+# Download the .deb package and install
+sudo dpkg -i tailscale-receiver_2.3.0-1_all.deb
+sudo apt install -f  # Fix any missing dependencies
+
+# The package will automatically:
+# - Install scripts to /usr/local/bin/
+# - Configure systemd service
+# - Set up desktop integration
+# - Create initial configuration
+```
+
+**Post-installation:**
+```bash
+# Enable and start the service
+sudo systemctl enable tailscale-receive
+sudo systemctl start tailscale-receive
+
+# Check status
+sudo systemctl status tailscale-receive
+```
+
+### Red Hat/Fedora/CentOS (.rpm)
+
+**Install from repository:**
+```bash
+# Download the .rpm package and install
+sudo rpm -i tailscale-receiver-2.3.0-1.noarch.rpm
+
+# Or using dnf/yum
+sudo dnf install tailscale-receiver-2.3.0-1.noarch.rpm
+```
+
+**Post-installation:**
+```bash
+# Enable and start the service
+sudo systemctl enable tailscale-receive
+sudo systemctl start tailscale-receive
+
+# Check status
+sudo systemctl status tailscale-receive
+```
+
+### Building Packages
+
+**Build Debian package:**
+```bash
+# Install build dependencies
+sudo apt install build-essential devscripts debhelper
+
+# Build the package
+make deb
+```
+
+**Build RPM package:**
+```bash
+# Install build dependencies
+sudo dnf install rpm-build
+
+# Build the package
+make rpm
+```
+
+**Build both packages:**
+```bash
+make packages
+```
+
+**Manual Migration (if needed):**
+```bash
+# Force migration check
+sudo systemctl restart tailscale-receive.service
+```
+
+**Security Examples:**
+```bash
+# Enable integrity checking for all files
+INTEGRITY_CHECK_ENABLED=true
+
+# Use SHA512 for maximum security
+INTEGRITY_CHECK_ALGORITHM=sha512
+
+# Allow larger files for integrity checking
+INTEGRITY_CHECK_MAX_SIZE=5368709120  # 5GB
+
+# Quick checks for fast networks
+INTEGRITY_CHECK_TIMEOUT=10
+```
+
+**Performance Tuning Examples:**
+```bash
+# Fast polling for responsive file reception
+POLL_INTERVAL=5 HEALTH_CHECK_INTERVAL=10
+
+# Battery-friendly for laptops
+POLL_INTERVAL=30 HEALTH_CHECK_INTERVAL=60 MAX_BACKOFF=600
+
+# High-reliability for unstable networks
+NETWORK_TIMEOUT=3 TAILSCALE_TIMEOUT=10 MAX_BACKOFF=600
+
+# Quiet notifications (reduce spam)
+NOTIFICATION_THROTTLE=10
+```
+
+#### Directory Support
+
+The receiver now supports receiving both individual files and entire directories:
+
+- **Recursive ownership**: Directories and all contents are properly chown'd to your user
+- **Size calculation**: Directory sizes include all nested files and subdirectories
+- **Smart notifications**: Separate counting and display for files vs directories
+- **Full preservation**: Directory structure and permissions are maintained
+
+```bash
+# Send a directory (from another device)
+tailscale file cp -r /path/to/directory/ receiver-device:
+
+# The receiver will:
+# - Create the directory structure
+# - Set ownership recursively
+# - Show notification with file/directory counts
+# - Calculate total size including all contents
+```
+
+### Operational Modes
+
+The service supports two operational modes:
+
+#### Continuous Service Mode (Default)
+- Runs as a persistent systemd service
+- Continuously monitors for new files
+- Immediate response to incoming Taildrop files
+- Higher CPU usage but instant notifications
+- Suitable for always-on desktop systems
+
+#### Timer Mode (Power Efficient)
+- Uses systemd timer for periodic execution
+- Runs every 30 seconds when active
+- Significantly reduced CPU usage
+- Delayed notifications (up to 30s)
+- Perfect for laptops, servers, and battery-powered devices
+
+To enable timer mode:
+```bash
+export USE_TIMER=true
+sudo ./install.sh
+```
+
+#### Manual/Scripted Operation
+```bash
+# Single execution cycle (useful for testing/cron)
+sudo /usr/local/bin/tailscale-receive.sh --once
+```
+
 ### Usage
 
 #### Manage the Service
@@ -378,9 +682,13 @@ export ARCHIVE_DIR_NAME=old_files
 
 #### Send Files
 
-##### Via Dolphin Context Menu (recommended)
+##### Via Dolphin Context Menu (KDE, recommended)
 
 - Right‑click file(s)/folder in Dolphin → "Send to device using Tailscale" → pick device.
+
+#### Via Nautilus Context Menu (GNOME)
+
+- Right‑click file(s)/folder in Nautilus → Scripts → "Send to device using Tailscale" → pick device.
 
 ##### Via Command Line
 
@@ -484,14 +792,118 @@ git config core.hooksPath .githooks
 | `make clean` | Clean temporary files |
 | `make validate` | Validate all scripts |
 
-### Contributing
+## 🧪 **Testing & CI/CD**
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run unit tests only
+make test-unit
+
+# Run integration tests
+make test-integration
+
+# Run security checks
+make test-security
+
+# Run complete CI pipeline locally
+make ci
+```
+
+### Test Types
+
+- **Unit Tests**: Individual function testing with Bats
+- **Integration Tests**: End-to-end system testing
+- **Security Tests**: ShellCheck linting and vulnerability scanning
+- **Packaging Tests**: Debian/RPM build validation
+
+### CI/CD Pipeline
+
+The project uses GitHub Actions for automated testing:
+
+- **On Push/PR**: Full test suite + security scanning
+- **Packaging Validation**: Debian/RPM build testing
+- **Deployment Checks**: Production readiness validation
+
+### Test Coverage
+
+- ✅ **47 unit tests** covering all functions
+- ✅ **8 integration tests** for end-to-end scenarios
+- ✅ **Security scanning** with Trivy
+- ✅ **Code quality** with ShellCheck and shfmt
+- ✅ **Packaging validation** for Debian/RPM
+
+### Writing Tests
+
+Tests use the Bats framework. Add new tests to:
+- `test/*.bats` - Unit tests
+- `test/integration.bats` - Integration tests
+
+Example test:
+```bash
+@test "my feature works" {
+    # Setup
+    export TEST_VAR="value"
+
+    # Execute
+    run my_command
+
+    # Assert
+    [[ $status -eq 0 ]]
+    [[ "$output" == "expected" ]]
+}
+```
+
+## 🤝 **Contributing**
+
+### Development Setup
+
+1. **Clone and setup**:
+   ```bash
+   git clone https://github.com/your-repo/tailscale-receiver.git
+   cd tailscale-receiver
+   make setup  # Install development dependencies
+   ```
+
+2. **Run tests**:
+   ```bash
+   make test   # Run full test suite
+   make ci     # Run CI pipeline locally
+   ```
+
+3. **Code quality**:
+   ```bash
+   make lint   # Check code style
+   make format # Format code
+   ```
+
+### Contribution Guidelines
 
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
 4. Run `make ci` to ensure all checks pass
 5. Commit your changes (hooks will run automatically)
 6. Push and create a pull request
+
+### Code Standards
+
+- **ShellCheck compliant** - No linting errors
+- **Bats tested** - Unit test coverage for new features
+- **Documentation updated** - README reflects changes
+- **Security reviewed** - No hardcoded secrets or vulnerabilities
+
+### Release Process
+
+1. Update version in `tailscale-receive.sh`
+2. Update `README.md` changelog
+3. Run full test suite: `make test-all`
+4. Create git tag: `git tag v2.3.0`
+5. Push tag: `git push origin v2.3.0`
+6. CI/CD handles packaging and deployment
 
 ### Security Notes
 
@@ -569,6 +981,7 @@ Removes:
 - `/usr/local/bin/tailscale-send.sh`
 - `/etc/systemd/system/tailscale-receive.service`
 - Dolphin service menu files (KF5/KF6)
+- Nautilus script (`~/.local/share/nautilus/scripts/Send to device using Tailscale`)
 
 Note: Does not remove your received files or your original project files.
 
@@ -599,7 +1012,28 @@ Note: Does not remove your received files or your original project files.
 
 ### Changelog
 
-#### Version 2.2.1 (Current)
+#### Version 2.3.0 (Current)
+
+- **Directory Support**: Full support for receiving directories with recursive ownership correction
+- **Single-Instance Protection**: PID and lock file mechanism prevents duplicate service processes
+- **Systemd Timer Mode**: Power-efficient timer alternative for battery-powered devices
+- **GNOME/Nautilus Integration**: Right-click context menu support for GNOME users
+- **Configurable Polling**: Customizable intervals, timeouts, and health check frequencies
+- **File Integrity Verification**: SHA256/SHA512/MD5 checksum validation for received files
+- **File Type Filtering**: MIME type and extension-based allow/deny filtering
+- **Virus Scanning**: ClamAV integration with automatic quarantine
+- **Health Endpoint**: HTTP monitoring endpoint with JSON status and metrics
+- **Configuration Migration**: Automatic config upgrades with backup and version tracking
+- **Professional Packaging**: Debian/RPM packages for enterprise deployment
+- **Environment Configuration**: Secure configuration via `/etc/default/tailscale-receive`
+- **Enhanced Notifications**: Aggregated notifications with file/directory breakdown and throttling
+- **Full Path Resolution**: Binary path resolution for improved security and reliability
+- **Rate Limiting**: Configurable abuse protection with file and size limits
+- **CI/CD Pipeline**: GitHub Actions with comprehensive testing and security scanning
+- **Integration Testing**: End-to-end testing framework with Bats
+- **Enterprise Packaging**: Production-ready Debian/RPM packages
+
+#### Version 2.2.1
 
 - **Archive Management**: Automatic archiving of files older than configurable threshold (default 14 days)
 - **Code Quality Infrastructure**: Added comprehensive linting, testing, CI/CD pipeline, and development tools

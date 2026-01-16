@@ -22,10 +22,15 @@ readonly VERSION="2.2.1"
 DEST_SCRIPT_PATH="/usr/local/bin/tailscale-receive.sh"
 SERVICE_NAME="tailscale-receive"
 SERVICE_FILE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+TIMER_FILE_PATH="/etc/systemd/system/${SERVICE_NAME}.timer"
 DEST_SEND_SCRIPT_PATH="/usr/local/bin/tailscale-send.sh"
 SYS_KIO_SERVICEMENU_DIR="/usr/share/kio/servicemenus"
 SYS_KSERVICES5_SERVICEMENU_DIR="/usr/share/kservices5/ServiceMenus"
 ENV_FILE_PATH="/etc/default/tailscale-receive"
+
+# Nautilus (GNOME) integration
+NAUTILUS_SCRIPTS_DIR="$HOME/.local/share/nautilus/scripts"
+NAUTILUS_SCRIPT_NAME="Send to device using Tailscale"
 
 # --- Functions ---
 
@@ -133,6 +138,13 @@ else
   print_warning "Service was not running."
 fi
 
+# Stop timer if it exists
+if systemctl is-active --quiet "$SERVICE_NAME.timer" 2>/dev/null; then
+  echo "➡️  Stopping timer..."
+  systemctl stop "$SERVICE_NAME.timer" || print_error_and_exit "Failed to stop the timer."
+  print_success "Timer stopped."
+fi
+
 # Check if the service is enabled before trying to disable it
 if systemctl is-enabled --quiet "$SERVICE_NAME.service"; then
   systemctl disable "$SERVICE_NAME.service" || print_error_and_exit "Failed to disable the service."
@@ -148,6 +160,14 @@ if [ -f "$SERVICE_FILE_PATH" ]; then
   print_success "Service file removed."
 else
   print_warning "Service file not found at '$SERVICE_FILE_PATH'."
+fi
+
+echo "➡️  Removing timer file..."
+if [ -f "$TIMER_FILE_PATH" ]; then
+  rm "$TIMER_FILE_PATH" || print_error_and_exit "Failed to remove timer file."
+  print_success "Timer file removed."
+else
+  print_warning "Timer file not found at '$TIMER_FILE_PATH'."
 fi
 
 # 5. Reload the systemd daemon to apply changes
@@ -188,6 +208,14 @@ fi
 if [ -f "$SYS_KSERVICES5_SERVICEMENU_DIR/tailscale-send.desktop" ]; then
   rm "$SYS_KSERVICES5_SERVICEMENU_DIR/tailscale-send.desktop" || print_error_and_exit "Failed to remove service menu (kservices5)."
   print_success "Removed $SYS_KSERVICES5_SERVICEMENU_DIR/tailscale-send.desktop."
+fi
+
+echo "➡️  Removing Nautilus (GNOME) integration..."
+if [ -f "$NAUTILUS_SCRIPTS_DIR/$NAUTILUS_SCRIPT_NAME" ]; then
+  rm "$NAUTILUS_SCRIPTS_DIR/$NAUTILUS_SCRIPT_NAME" || print_error_and_exit "Failed to remove Nautilus script."
+  print_success "Removed $NAUTILUS_SCRIPTS_DIR/$NAUTILUS_SCRIPT_NAME."
+else
+  print_warning "Nautilus script not found at '$NAUTILUS_SCRIPTS_DIR/$NAUTILUS_SCRIPT_NAME'."
 fi
 
 if command -v kbuildsycoca6 >/dev/null 2>&1; then

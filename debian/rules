@@ -1,0 +1,46 @@
+#!/usr/bin/make -f
+
+# Enable all hardening options
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
+
+%:
+	dh $@
+
+override_dh_auto_install:
+	# Install scripts
+	install -D -m 0755 tailscale-receive.sh $(CURDIR)/debian/tailscale-receiver/usr/local/bin/tailscale-receive.sh
+	install -D -m 0755 tailscale-send.sh $(CURDIR)/debian/tailscale-receiver/usr/local/bin/tailscale-send.sh
+	install -D -m 0755 install.sh $(CURDIR)/debian/tailscale-receiver/usr/local/bin/tailscale-receiver-install.sh
+	install -D -m 0755 uninstall.sh $(CURDIR)/debian/tailscale-receiver/usr/local/bin/tailscale-receiver-uninstall.sh
+
+	# Install systemd service files
+	install -D -m 0644 debian/tailscale-receive.service $(CURDIR)/debian/tailscale-receiver/usr/lib/systemd/system/tailscale-receive.service
+	install -D -m 0644 debian/tailscale-receive.timer $(CURDIR)/debian/tailscale-receiver/usr/lib/systemd/system/tailscale-receive.timer
+
+	# Install desktop integration files
+	install -D -m 0644 debian/tailscale-send.desktop $(CURDIR)/debian/tailscale-receiver/usr/share/kio/servicemenus/tailscale-send.desktop
+	install -D -m 0644 debian/tailscale-send.desktop $(CURDIR)/debian/tailscale-receiver/usr/share/kservices5/ServiceMenus/tailscale-send.desktop
+
+	# Install Nautilus script
+	install -d $(CURDIR)/debian/tailscale-receiver/etc/skel/.local/share/nautilus/scripts
+	install -D -m 0755 debian/tailscale-nautilus-script $(CURDIR)/debian/tailscale-receiver/etc/skel/.local/share/nautilus/scripts/Send\ to\ device\ using\ Tailscale
+
+	# Install configuration template
+	install -D -m 0644 debian/tailscale-receiver.default $(CURDIR)/debian/tailscale-receiver/etc/default/tailscale-receive
+
+	# Install documentation
+	install -D -m 0644 README.md $(CURDIR)/debian/tailscale-receiver/usr/share/doc/tailscale-receiver/README.md
+	install -D -m 0644 LICENSE $(CURDIR)/debian/tailscale-receiver/usr/share/doc/tailscale-receiver/LICENSE
+
+override_dh_installsystemd:
+	dh_installsystemd --name=tailscale-receive
+	dh_installsystemd --name=tailscale-receive --no-start
+
+override_dh_auto_test:
+	# Run tests during build if bats is available
+	if command -v bats >/dev/null 2>&1; then \
+		cd test && bats *.bats; \
+	else \
+		echo "bats not available, skipping tests"; \
+	fi

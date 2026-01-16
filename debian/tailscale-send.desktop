@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+MimeType=all/allfiles;inode/directory;
+Actions=TailScaleSend;
+
+[Desktop Action TailScaleSend]
+Name=Send to device using Tailscale
+Icon=network-workgroup
+Exec=/usr/local/bin/tailscale-send.sh %F

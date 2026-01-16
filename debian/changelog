@@ -1,0 +1,14 @@
+tailscale-receiver (2.3.0-1) unstable; urgency=medium
+
+  * New upstream release 2.3.0
+  * Directory support: Full recursive directory reception
+  * Single-instance protection: PID/lock file mechanism
+  * Systemd timer mode: Power-efficient operation
+  * GNOME/Nautilus integration: Right-click context menus
+  * Configurable polling: Custom intervals and timeouts
+  * File integrity verification: SHA256/SHA512/MD5 checksums
+  * Health endpoint: HTTP monitoring with JSON metrics
+  * Configuration migration: Automatic version upgrades
+  * Enterprise packaging: Professional Debian/RPM packages
+
+ -- Tailscale Community <noreply@tailscale.com>  $(date -R)

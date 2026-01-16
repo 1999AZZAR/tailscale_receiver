@@ -1,5 +1,5 @@
 # Tailscale Receiver - Development Makefile
-.PHONY: help install uninstall test lint format clean setup dev-setup check-deps
+.PHONY: help install uninstall test lint format clean setup dev-setup check-deps deb rpm packages
 
 # Default target
 help:
@@ -18,6 +18,11 @@ help:
 	@echo "Installation:"
 	@echo "  make install       - Install Tailscale Receiver"
 	@echo "  make uninstall     - Uninstall Tailscale Receiver"
+	@echo ""
+	@echo "Packaging:"
+	@echo "  make deb           - Build Debian package"
+	@echo "  make rpm           - Build RPM package"
+	@echo "  make packages      - Build both Debian and RPM packages"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean         - Clean temporary files"
@@ -60,6 +65,8 @@ format:
 # Testing
 test: test-unit test-integration
 
+test-all: test-unit test-integration test-security
+
 test-unit:
 	@echo "Running unit tests..."
 	@if [ -d "test" ]; then \
@@ -68,9 +75,29 @@ test-unit:
 		echo "⚠️  No test directory found. Run 'make test-setup' to create tests."; \
 	fi
 
+test-directory:
+	@echo "Running directory-specific tests..."
+	@if [ -d "test" ] && [ -f "test/directory.bats" ]; then \
+		cd test && bats directory.bats; \
+	else \
+		echo "⚠️  Directory tests not found."; \
+	fi
+
 test-integration:
 	@echo "Running integration tests..."
-	@echo "⚠️  Integration tests require running service. Use manual testing."
+	@if [ -f "test/integration.bats" ]; then \
+		cd test && bats integration.bats; \
+	else \
+		echo "⚠️  Integration tests not found."; \
+	fi
+
+test-security:
+	@echo "Running security tests..."
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		find . -name "*.sh" -type f -exec shellcheck --severity=error {} \; && echo "✅ Security linting passed"; \
+	else \
+		echo "⚠️  ShellCheck not available for security testing"; \
+	fi
 
 test-setup:
 	@echo "Setting up test directory..."
@@ -107,6 +134,32 @@ clean:
 # CI/CD simulation
 ci: check-deps lint test
 	@echo "✅ CI checks passed!"
+
+# Packaging
+deb:
+	@echo "Building Debian package..."
+	@if command -v dpkg-buildpackage >/dev/null 2>&1; then \
+		dpkg-buildpackage -us -uc -b; \
+		echo "✅ Debian package built successfully"; \
+	else \
+		echo "❌ dpkg-buildpackage not found. Install with: sudo apt install build-essential devscripts"; \
+		exit 1; \
+	fi
+
+rpm:
+	@echo "Building RPM package..."
+	@if command -v rpmbuild >/dev/null 2>&1; then \
+		mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}; \
+		tar czf ~/rpmbuild/SOURCES/tailscale-receiver-2.3.0.tar.gz --exclude=.git --exclude=test --exclude=debian --exclude=rpm .; \
+		rpmbuild -ba rpm/tailscale-receiver.spec; \
+		echo "✅ RPM package built successfully"; \
+	else \
+		echo "❌ rpmbuild not found. Install with: sudo dnf install rpm-build"; \
+		exit 1; \
+	fi
+
+packages: deb rpm
+	@echo "✅ All packages built successfully"
 
 # Development helpers
 update-scripts:

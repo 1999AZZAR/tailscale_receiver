@@ -1,0 +1,20 @@
+#!/bin/bash
+# Nautilus script to send files using Tailscale
+# This script is called with selected files as arguments
+
+# Check if any files were selected
+if [ $# -eq 0 ]; then
+    zenity --error --title="Tailscale Send" --text="No files selected." 2>/dev/null || \
+    echo "Error: No files selected." >&2
+    exit 1
+fi
+
+# Check if tailscale-send.sh exists and is executable
+if [ ! -x "/usr/local/bin/tailscale-send.sh" ]; then
+    zenity --error --title="Tailscale Send" --text="Tailscale sender not found. Please check your installation." 2>/dev/null || \
+    echo "Error: Tailscale sender not found. Please check your installation." >&2
+    exit 1
+fi
+
+# Call the tailscale sender with all selected files
+exec /usr/local/bin/tailscale-send.sh "$@"
