@@ -40,10 +40,62 @@ log_error() {
 }
 
 # --- Configuration ---
-# These values will be automatically configured by the install script
+# These values are configured via environment file (/etc/default/tailscale-receive)
 # Can be overridden via environment variables for testing
-TARGET_DIR="/home/user/Downloads/tailscale/"
-FIX_OWNER="user"
+
+# Target directory for received files (required)
+TARGET_DIR="${TARGET_DIR:-/home/${TARGET_USER:-user}/Downloads/tailscale}"
+
+# Target user for file ownership correction (required)
+FIX_OWNER="${FIX_OWNER:-${TARGET_USER:-user}}"
+
+# Logging level (optional, default: info)
+LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# Archive management (optional)
+ARCHIVE_ENABLED="${ARCHIVE_ENABLED:-true}"
+ARCHIVE_DAYS="${ARCHIVE_DAYS:-14}"
+ARCHIVE_DIR_NAME="${ARCHIVE_DIR_NAME:-archive}"
+
+# --- Binary Resolution ---
+# Resolve full paths to executables for security and reliability
+resolve_binaries() {
+  log_debug "Resolving binary paths..."
+
+  # Required binaries
+  TS_BIN=$(command -v tailscale 2>/dev/null) || {
+    log_error "tailscale binary not found in PATH. Please install Tailscale."
+    exit 8
+  }
+
+  PING_BIN=$(command -v ping 2>/dev/null) || {
+    log_error "ping binary not found in PATH. This is required for network checks."
+    exit 9
+  }
+
+  CHOWN_BIN=$(command -v chown 2>/dev/null) || {
+    log_error "chown binary not found in PATH. This is required for ownership correction."
+    exit 10
+  }
+
+  RUNUSER_BIN=$(command -v runuser 2>/dev/null) || {
+    log_error "runuser binary not found in PATH. This is required for user notifications."
+    exit 11
+  }
+
+  # Optional binaries (warnings only)
+  NOTIFY_SEND_BIN=$(command -v notify-send 2>/dev/null) || {
+    log_warn "notify-send not found. Desktop notifications will be disabled."
+    NOTIFY_SEND_BIN=""
+  }
+
+  log_debug "Binary resolution complete:"
+  log_debug "  tailscale: $TS_BIN"
+  log_debug "  ping: $PING_BIN"
+  log_debug "  chown: $CHOWN_BIN"
+  log_debug "  runuser: $RUNUSER_BIN"
+  log_debug "  notify-send: ${NOTIFY_SEND_BIN:-not found}"
+}
 
 # --- Input Validation Functions ---
 validate_config() {
@@ -152,6 +204,9 @@ log_info "Starting Tailscale receiver service"
 # Validate configuration before proceeding
 validate_config
 
+# Resolve binary paths for security and reliability
+resolve_binaries
+
 mkdir -p "$TARGET_DIR"
 
 # Exponential backoff state
@@ -162,6 +217,10 @@ declare -i cycle_count=0
 declare -i start_time
 start_time=$(date +%s)
 
+# Notification throttling state
+declare -i last_notification_time=0
+declare -i notification_throttle_seconds=5
+
 log_info "Service initialized - Monitoring directory: $TARGET_DIR, Target user: $FIX_OWNER"
 
 while true; do
@@ -169,7 +228,7 @@ while true; do
   cycle_start=$(date +%s)
 
   # 1. Basic health checks (internet, tailscale status)
-  if ! ping -c 1 -W 1 8.8.8.8 &>/dev/null; then
+  if ! "$PING_BIN" -c 1 -W 1 8.8.8.8 &>/dev/null; then
     log_warn "Network connectivity check failed (cycle $cycle_count). Backing off for ${sleep_interval}s (failure #$((consecutive_failures + 1)))"
     consecutive_failures=$((consecutive_failures + 1))
     sleep_interval=$((sleep_interval * 2))
@@ -178,7 +237,7 @@ while true; do
     continue
   fi
 
-  if ! tailscale status &>/dev/null; then
+  if ! "$TS_BIN" status &>/dev/null; then
     log_error "Tailscale not authenticated (cycle $cycle_count). Please run 'tailscale up' manually or set TS_AUTHKEY environment variable. Backing off for ${sleep_interval}s"
     consecutive_failures=$((consecutive_failures + 1))
     sleep_interval=$((sleep_interval * 2))
@@ -192,7 +251,7 @@ while true; do
 
   # 3. Attempt to get new files
   log_debug "Attempting to retrieve Taildrop files (cycle $cycle_count)"
-  if ! tailscale file get "$TARGET_DIR" 2>/dev/null; then
+  if ! "$TS_BIN" file get "$TARGET_DIR" 2>/dev/null; then
     log_warn "tailscale file get failed (cycle $cycle_count). This may be normal if no files are pending. Backing off for ${sleep_interval}s"
     consecutive_failures=$((consecutive_failures + 1))
     sleep_interval=$((sleep_interval * 2))
@@ -216,6 +275,8 @@ while true; do
 
     processed_count=0
     failed_count=0
+    total_size_bytes=0
+    declare -a processed_files=()
 
     # Loop through each new file
     for filename in "${new_files[@]}"; do
@@ -227,27 +288,59 @@ while true; do
       log_debug "Processing file: $filename"
 
       # Fix ownership of the new file
-      if ! chown "$FIX_OWNER:$FIX_OWNER" "$file_path" 2>/dev/null; then
+      if ! "$CHOWN_BIN" "$FIX_OWNER:$FIX_OWNER" "$file_path" 2>/dev/null; then
         log_error "Failed to change ownership of '$filename' to $FIX_OWNER. Check file permissions."
         failed_count=$((failed_count + 1))
         continue
       fi
 
       # Get file size for logging
-      file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "unknown")
+      file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
 
       log_info "Successfully processed: $filename (${file_size} bytes)"
       processed_count=$((processed_count + 1))
+      total_size_bytes=$((total_size_bytes + file_size))
+      processed_files+=("$filename")
 
-      # Send notification AS YOUR USER using notify-send
-      if runuser -l "$FIX_OWNER" -c "notify-send 'Tailscale: File Received' '$filename' -i document-save -a Tailscale" 2>/dev/null; then
-        log_debug "Desktop notification sent for: $filename"
-      else
-        log_warn "Failed to send desktop notification for '$filename'. Desktop environment may not be available."
-      fi
     done
 
-    log_info "File processing complete: $processed_count successful, $failed_count failed (total: ${#new_files[@]})"
+    # Send aggregated notification if we have processed files and throttling allows
+    if [[ $processed_count -gt 0 ]] && [[ -n "$NOTIFY_SEND_BIN" ]]; then
+      current_time=$(date +%s)
+      time_since_last_notification=$((current_time - last_notification_time))
+
+      if [[ $time_since_last_notification -ge $notification_throttle_seconds ]]; then
+        # Format size for display
+        if [[ $total_size_bytes -lt 1024 ]]; then
+          size_display="${total_size_bytes}B"
+        elif [[ $total_size_bytes -lt $((1024 * 1024)) ]]; then
+          size_display="$((total_size_bytes / 1024))KB"
+        else
+          size_display="$((total_size_bytes / (1024 * 1024)))MB"
+        fi
+
+        # Create notification message
+        if [[ $processed_count -eq 1 ]]; then
+          notify_title="Tailscale: File Received"
+          notify_body="'${processed_files[0]}' (${size_display})"
+        else
+          notify_title="Tailscale: $processed_count Files Received"
+          notify_body="Total: ${size_display} - Click to open folder"
+        fi
+
+        # Send notification with folder open action capability
+        if NOTIFY_SEND_BIN="$NOTIFY_SEND_BIN" "$RUNUSER_BIN" -l "$FIX_OWNER" -c "notify-send '$notify_title' '$notify_body' -i document-save -a Tailscale --action=open:Open" 2>/dev/null; then
+          log_debug "Aggregated desktop notification sent: $processed_count files, $size_display"
+          last_notification_time=$current_time
+        else
+          log_warn "Failed to send aggregated desktop notification. Desktop environment may not be available."
+        fi
+      else
+        log_debug "Notification throttled (last notification ${time_since_last_notification}s ago, need ${notification_throttle_seconds}s)"
+      fi
+    fi
+
+    log_info "File processing complete: $processed_count successful, $failed_count failed (total: ${#new_files[@]}, size: ${total_size_bytes} bytes)"
   else
     log_debug "No new files detected (cycle $cycle_count)"
   fi

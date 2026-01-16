@@ -25,6 +25,7 @@ SERVICE_FILE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 DEST_SEND_SCRIPT_PATH="/usr/local/bin/tailscale-send.sh"
 SYS_KIO_SERVICEMENU_DIR="/usr/share/kio/servicemenus"
 SYS_KSERVICES5_SERVICEMENU_DIR="/usr/share/kservices5/ServiceMenus"
+ENV_FILE_PATH="/etc/default/tailscale-receive"
 
 # --- Functions ---
 
@@ -164,6 +165,14 @@ else
 fi
 
 # 7. Remove the sender script and Dolphin service menus
+echo "➡️  Removing environment configuration file..."
+if [ -f "$ENV_FILE_PATH" ]; then
+  rm "$ENV_FILE_PATH" || print_error_and_exit "Failed to remove environment file."
+  print_success "Environment file removed from '$ENV_FILE_PATH'."
+else
+  print_warning "Environment file not found at '$ENV_FILE_PATH'."
+fi
+
 echo "➡️  Removing sender script and Dolphin service menus..."
 if [ -f "$DEST_SEND_SCRIPT_PATH" ]; then
   rm "$DEST_SEND_SCRIPT_PATH" || print_error_and_exit "Failed to remove the sender script."
