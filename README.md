@@ -1,38 +1,38 @@
-# Tailscale Receiver v3 (Go) 🚀
+# Tailscale Receiver v3 (Go)
 
-Tailscale File Receiver yang beneran stable, reliable, dan irit resource. Dibuat buat gantiin versi shell script lama yang boros proses.
+Tailscale File Receiver yang fokus pada stabilitas dan efisiensi resource. Versi ini menggantikan implementasi shell script sebelumnya untuk mengurangi overhead sistem.
 
-## ✨ Kenapa Versi Go?
-- **Low Resource**: Memory usage cuma **~2MB**. Jauh lebih enteng dibanding shell script.
-- **Reliable**: Handle sinyal shutdown secara graceful (nggak ada file korup/nanggung).
-- **Smart Polling**: Cek status Tailscale via JSON API sebelum narik file.
-- **Single Binary**: Nggak butuh dependensi eksternal macem-macem.
+## Karakteristik Teknis
+- **Resource Efficiency**: Penggunaan memori konstan di kisaran ~2MB.
+- **Reliability**: Menggunakan signal.NotifyContext untuk penanganan termination secara bersih.
+- **Optimized Polling**: Validasi status Tailscale melalui JSON API sebelum eksekusi transfer file.
+- **Static Binary**: Distribusi dalam bentuk single binary tanpa dependensi runtime eksternal.
 
-## 🛠️ Cara Install & Pakai
-1. Clone repo:
+## Instalasi
+1. Clone repositori:
    ```bash
    git clone https://github.com/1999AZZAR/tailscale_receiver
    cd tailscale_receiver
    ```
-2. Build & Install otomatis:
+2. Eksekusi installer:
    ```bash
    chmod +x install-go.sh
    ./install-go.sh
    ```
-3. Nyalain service-nya:
+3. Aktifkan service:
    ```bash
    sudo systemctl enable --now tailscale-receive-go
    ```
 
-## ⚙️ Konfigurasi
-Edit file `/etc/default/tailscale-receive` buat atur variabel berikut:
-- `TARGET_DIR`: Folder tujuan file (default: `~/Downloads/tailscale`).
-- `TARGET_USER`: User pemilik file hasil download.
-- `POLL_INTERVAL`: Jeda antar pengecekan (default: `15s`).
-- `ARCHIVE_DAYS`: Simpan file lama selama X hari di folder `archive/` (default: `14`).
+## Konfigurasi
+Konfigurasi dikelola melalui file `/etc/default/tailscale-receive` dengan variabel berikut:
+- `TARGET_DIR`: Direktori tujuan (default: `~/Downloads/tailscale`).
+- `TARGET_USER`: User pemilik file hasil transfer.
+- `POLL_INTERVAL`: Interval pengecekan (default: `15s`).
+- `ARCHIVE_DAYS`: Retensi file lama dalam direktori `archive/` (default: `14`).
 
-## 📜 Legacy Version
-Versi shell script yang lama udah dipindahin ke folder `legacy/` kalau kamu masih butuh buat referensi.
+## Legacy
+Implementasi berbasis shell script dipindahkan ke direktori `legacy/` sebagai referensi.
 
 ---
-*Maintained with ❤️ by Mema (Multi-Euristic Mind Automaton)*
+Maintained by Mema (Multi-Euristic Mind Automaton)
