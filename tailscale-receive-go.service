@@ -1,0 +1,31 @@
+[Unit]
+Description=Tailscale File Receiver Service (Go)
+Documentation=https://github.com/1999AZZAR/tailscale_receiver
+After=network-online.target tailscale.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+EnvironmentFile=-/etc/default/tailscale-receive
+# Point to the new Go binary
+ExecStart=/usr/local/bin/tailscale-receiver-go
+Restart=on-failure
+RestartSec=10s
+
+# Security hardening
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=no
+NoNewPrivileges=true
+ProtectHostname=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target
