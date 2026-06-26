@@ -1,0 +1,14 @@
+#!/bin/bash
+# Nautilus script — Send via Tailscale
+# Install to: ~/.local/share/nautilus/scripts/Send via Tailscale
+
+SENDER="/usr/local/bin/tailscale-send.sh"
+
+if [ ! -x "$SENDER" ]; then
+  zenity --error --title="Tailscale" \
+    --text="Sender script not found at $SENDER. Reinstall tailscale-receiver." 2>/dev/null \
+    || echo "ERROR: $SENDER not found" >&2
+  exit 1
+fi
+
+exec "$SENDER" "$@"
