@@ -9,23 +9,29 @@ Type=simple
 User=root
 Group=root
 EnvironmentFile=-/etc/default/tailscale-receive
-# Point to the new Go binary
 ExecStart=/usr/local/bin/tailscale-receiver-go
-Restart=on-failure
+Restart=always
 RestartSec=10s
 
-# Security hardening
+# Device & file system isolation
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=no
-NoNewPrivileges=true
-ProtectHostname=true
 ProtectClock=true
+ProtectHostname=true
 ProtectControlGroups=true
 ProtectKernelTunables=true
+
+# Privilege sandboxing
+NoNewPrivileges=true
 RestrictSUIDSGID=true
 LockPersonality=true
 RestrictRealtime=true
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_NET_RAW CAP_SETUID CAP_SETGID
+
+# Memory & OOM hardening
+MemoryDenyWriteExecute=true
+OOMScoreAdjust=500
 
 [Install]
 WantedBy=multi-user.target

@@ -3,206 +3,430 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 )
 
-// Config holds the service configuration
+const version = "3.1.0"
+
+var logger = log.New(os.Stdout, "", log.LstdFlags)
+
 type Config struct {
-	TargetDir    string        `json:"target_dir"`
-	TargetUser   string        `json:"target_user"`
-	PollInterval time.Duration `json:"poll_interval"`
-	LogLevel     string        `json:"log_level"`
-	ArchiveDays  int           `json:"archive_days"`
-	ArchiveDir   string        `json:"archive_dir"`
+	TargetDir    string
+	TargetUser   string
+	PollInterval time.Duration
+	LogLevel     string
+	ArchiveDays  int
+	Once         bool
 }
 
-var (
-	version = "3.0.0-beta"
-	logger  = log.New(os.Stdout, "[Tailscale-Receiver] ", log.LstdFlags)
-)
-
 func main() {
-	config := loadConfig()
+	cfg, ok := parseFlags()
+	if !ok {
+		return
+	}
 
-	logger.Printf("Starting Tailscale Receiver v%s", version)
-	logger.Printf("Monitoring to: %s as user: %s", config.TargetDir, config.TargetUser)
+	logger.SetPrefix("[tailscale-receiver] ")
+	logger.Printf("v%s starting — target=%s user=%s interval=%s", version, cfg.TargetDir, cfg.TargetUser, cfg.PollInterval)
 
-	// Ensure target directory exists
-	if err := os.MkdirAll(config.TargetDir, 0755); err != nil {
-		logger.Fatalf("Failed to create target directory: %v", err)
+	if cfg.LogLevel == "debug" {
+		logger.SetFlags(log.LstdFlags | log.Lshortfile)
+	}
+
+	if err := preflightChecks(cfg); err != nil {
+		logger.Fatalf("preflight: %v", err)
+	}
+
+	if err := os.MkdirAll(cfg.TargetDir, 0755); err != nil {
+		logger.Fatalf("mkdir %s: %v", cfg.TargetDir, err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	ticker := time.NewTicker(config.PollInterval)
+	if cfg.Once {
+		processFiles(cfg)
+		manageArchive(cfg)
+		return
+	}
+
+	ticker := time.NewTicker(cfg.PollInterval)
 	defer ticker.Stop()
 
-	// Initial run
-	processFiles(config)
+	archiveTicker := time.NewTicker(time.Hour)
+	defer archiveTicker.Stop()
+
+	// initial cycle
+	if isTailscaleUp() {
+		processFiles(cfg)
+		manageArchive(cfg)
+	} else {
+		logger.Println("tailscale not running at startup, will retry")
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Println("Shutting down gracefully...")
+			logger.Println("shutdown")
 			return
 		case <-ticker.C:
+			if !isTailscaleUp() {
+				continue
+			}
+			processFiles(cfg)
+		case <-archiveTicker.C:
 			if isTailscaleUp() {
-				processFiles(config)
-				manageArchive(config)
-			} else {
-				if config.LogLevel == "debug" {
-					logger.Println("Tailscale is down, skipping cycle")
-				}
+				manageArchive(cfg)
 			}
 		}
 	}
 }
 
-func loadConfig() Config {
-	// Simple default config, override with ENVs
-	cfg := Config{
-		TargetDir:    getEnv("TARGET_DIR", filepath.Join(os.Getenv("HOME"), "Downloads/tailscale")),
-		TargetUser:   getEnv("TARGET_USER", os.Getenv("USER")),
-		PollInterval: 15 * time.Second,
-		LogLevel:     getEnv("LOG_LEVEL", "info"),
-		ArchiveDays:  14,
-		ArchiveDir:   "archive",
+func parseFlags() (Config, bool) {
+	var (
+		targetDir   = flag.String("dir", "", "download directory (default: ~/Downloads/tailscale of TARGET_USER)")
+		targetUser  = flag.String("user", os.Getenv("USER"), "owner of received files")
+		pollSec     = flag.Int("interval", 15, "poll interval in seconds")
+		logLevel    = flag.String("log", "info", "log level (info|debug)")
+		archiveDays = flag.Int("archive-days", 14, "archive files older than N days")
+		once        = flag.Bool("once", false, "run once and exit")
+		showVersion = flag.Bool("version", false, "show version and exit")
+	)
+	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("tailscale-receiver v%s %s/%s\n", version, runtime.GOOS, runtime.GOARCH)
+		os.Exit(0)
 	}
 
-	if intervalStr := os.Getenv("POLL_INTERVAL"); intervalStr != "" {
-		if d, err := time.ParseDuration(intervalStr); err == nil {
+	cfg := Config{
+		TargetDir:    *targetDir,
+		TargetUser:   *targetUser,
+		PollInterval: time.Duration(*pollSec) * time.Second,
+		LogLevel:     *logLevel,
+		ArchiveDays:  *archiveDays,
+		Once:         *once,
+	}
+
+	// env overrides
+	envDir := os.Getenv("TARGET_DIR")
+	envUser := os.Getenv("TARGET_USER")
+
+	if envUser != "" {
+		cfg.TargetUser = envUser
+	}
+
+	// default target dir: use TARGET_USER's home, not the running process's home
+	if envDir != "" {
+		cfg.TargetDir = envDir
+	} else if cfg.TargetDir == "" {
+		cfg.TargetDir = defaultTargetDir(cfg.TargetUser)
+	}
+
+	if v := os.Getenv("LOG_LEVEL"); v != "" {
+		cfg.LogLevel = v
+	}
+	if v := os.Getenv("POLL_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
 			cfg.PollInterval = d
-		} else if i, err := time.ParseDuration(intervalStr + "s"); err == nil {
-			cfg.PollInterval = i
+		}
+	}
+	if v := os.Getenv("ARCHIVE_DAYS"); v != "" {
+		if n, err := fmt.Sscanf(v, "%d", &cfg.ArchiveDays); err == nil && n == 1 {
+			// ok
 		}
 	}
 
-	return cfg
+	if cfg.PollInterval < time.Second {
+		cfg.PollInterval = time.Second
+	}
+	if cfg.ArchiveDays < 0 {
+		cfg.ArchiveDays = 0
+	}
+	if cfg.LogLevel != "debug" {
+		cfg.LogLevel = "info"
+	}
+
+	return cfg, true
 }
 
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
+func defaultTargetDir(user string) string {
+	home, err := userHomeDir(user)
+	if err != nil {
+		return "/tmp/tailscale-receiver"
 	}
-	return fallback
+	return filepath.Join(home, "Downloads", "tailscale")
+}
+
+func userHomeDir(user string) (string, error) {
+	out, err := exec.Command("getent", "passwd", user).Output()
+	if err != nil {
+		return "", err
+	}
+	parts := strings.Split(strings.TrimSpace(string(out)), ":")
+	if len(parts) < 6 {
+		return "", fmt.Errorf("unexpected passwd format for %s", user)
+	}
+	return parts[5], nil
+}
+
+func preflightChecks(cfg Config) error {
+	var errs []string
+
+	// tailscale binary
+	if _, err := exec.LookPath("tailscale"); err != nil {
+		errs = append(errs, "tailscale binary not found in PATH")
+	}
+
+	// target user exists
+	if _, err := userLookup(cfg.TargetUser); err != nil {
+		errs = append(errs, fmt.Sprintf("user %q not found: %v", cfg.TargetUser, err))
+	}
+
+	if _, err := exec.LookPath("notify-send"); err == nil {
+		logger.Println("notify-send found, desktop notifications enabled")
+	} else {
+		logger.Println("notify-send not found, desktop notifications disabled")
+	}
+
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+type UserInfo struct {
+	UID      int
+	GID      int
+	Username string
+}
+
+func userLookup(username string) (*UserInfo, error) {
+	cmd := exec.Command("id", "-u", username)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("id -u %s: %w", username, err)
+	}
+	var uid int
+	if _, err := fmt.Sscanf(string(out), "%d", &uid); err != nil {
+		return nil, fmt.Errorf("parse uid: %w", err)
+	}
+
+	cmd = exec.Command("id", "-g", username)
+	out, err = cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("id -g %s: %w", username, err)
+	}
+	var gid int
+	if _, err := fmt.Sscanf(string(out), "%d", &gid); err != nil {
+		return nil, fmt.Errorf("parse gid: %w", err)
+	}
+
+	return &UserInfo{UID: uid, GID: gid, Username: username}, nil
 }
 
 func isTailscaleUp() bool {
-	// Optimized: just check if tailscale is running/online
 	cmd := exec.Command("tailscale", "status", "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		return false
 	}
-
 	var status struct {
 		BackendState string `json:"BackendState"`
 	}
 	if err := json.Unmarshal(output, &status); err != nil {
 		return false
 	}
-
 	return status.BackendState == "Running"
 }
 
 func processFiles(cfg Config) {
-	// Execute tailscale file get
-	// Using --conflict=rename to avoid overwriting
-	cmd := exec.Command("tailscale", "file", "get", cfg.TargetDir)
-	err := cmd.Run()
+	cmd := exec.Command("tailscale", "file", "get", "--conflict=rename", cfg.TargetDir)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		// This is often just "no files", so we don't log as error unless debug
-		if cfg.LogLevel == "debug" {
-			logger.Printf("Tailscale file get: %v", err)
+		if len(out) > 0 {
+			logger.Printf("file get: %s", strings.TrimSpace(string(out)))
 		}
+		if isNoFilesError(err, out) {
+			return
+		}
+		logger.Printf("file get error (will retry): %v", err)
 		return
 	}
 
-	// Fix ownership of files in TargetDir that belong to root
 	files, err := os.ReadDir(cfg.TargetDir)
 	if err != nil {
+		logger.Printf("read dir %s: %v", cfg.TargetDir, err)
 		return
 	}
 
+	fixed := 0
 	for _, f := range files {
-		if f.IsDir() && f.Name() == cfg.ArchiveDir {
+		if f.IsDir() {
 			continue
 		}
-
 		fPath := filepath.Join(cfg.TargetDir, f.Name())
-		info, err := f.Info()
-		if err != nil {
+
+		if !isRootOwned(f) {
 			continue
 		}
 
-		// Check if it belongs to root (typical when service runs as root)
-		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			if stat.Uid == 0 {
-				logger.Printf("Found new file: %s, fixing ownership to %s", f.Name(), cfg.TargetUser)
-				fixOwnership(fPath, cfg.TargetUser)
-				notifyUser(f.Name(), cfg.TargetUser)
-			}
+		logger.Printf("received: %s", f.Name())
+		if err := fixOwnership(fPath, cfg); err != nil {
+			logger.Printf("chown %s: %v", f.Name(), err)
+			continue
 		}
+		notifyUser(f.Name(), cfg)
+		fixed++
+	}
+
+	if fixed > 0 && cfg.LogLevel == "debug" {
+		logger.Printf("fixed ownership for %d file(s)", fixed)
 	}
 }
 
-func fixOwnership(path, user string) {
-	// We use the 'chown' binary for simplicity and recursive handling if needed
-	// But for files, we can just use the user ID
-	cmd := exec.Command("chown", "-R", user+":"+user, path)
-	if err := cmd.Run(); err != nil {
-		logger.Printf("Error changing ownership of %s: %v", path, err)
+func isNoFilesError(err error, out []byte) bool {
+	if err == nil {
+		return false
 	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "no files") || strings.Contains(msg, "no such file") {
+		return true
+	}
+	return strings.Contains(strings.ToLower(string(out)), "no files to receive")
 }
 
-func notifyUser(filename, user string) {
-	// Minimalist notification using notify-send
-	// Only if not in a headless server environment usually
-	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+func isRootOwned(f fs.DirEntry) bool {
+	info, err := f.Info()
+	if err != nil {
+		return false
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false
+	}
+	return stat.Uid == 0
+}
+
+func fixOwnership(path string, cfg Config) error {
+	uinfo, err := userLookup(cfg.TargetUser)
+	if err != nil {
+		return err
+	}
+	return os.Chown(path, uinfo.UID, uinfo.GID)
+}
+
+func notifyUser(filename string, cfg Config) {
+	uinfo, err := userLookup(cfg.TargetUser)
+	if err != nil {
+		return
+	}
+	if _, err := exec.LookPath("notify-send"); err != nil {
 		return
 	}
 
-	cmd := exec.Command("sudo", "-u", user, "notify-send", "Tailscale", "Received: "+filename, "-i", "document-save")
+	display := os.Getenv("DISPLAY")
+	wayland := os.Getenv("WAYLAND_DISPLAY")
+	dbusAddr := os.Getenv("DBUS_SESSION_BUS_ADDRESS")
+
+	if display == "" && wayland == "" {
+		display = detectDisplay(cfg.TargetUser)
+		if display == "" {
+			return
+		}
+	}
+	if dbusAddr == "" {
+		userBus := filepath.Join("/run/user", fmt.Sprint(uinfo.UID), "bus")
+		if _, err := os.Stat(userBus); err == nil {
+			dbusAddr = "unix:path=" + userBus
+		}
+	}
+
+	cmd := exec.Command("notify-send", "Tailscale Receiver", "Received: "+filename, "-i", "document-save")
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	cmd.SysProcAttr.Credential = &syscall.Credential{
+		Uid: uint32(uinfo.UID),
+		Gid: uint32(uinfo.GID),
+	}
+
+	if display != "" {
+		cmd.Env = append(cmd.Env, "DISPLAY="+display)
+	}
+	if wayland != "" {
+		cmd.Env = append(cmd.Env, "WAYLAND_DISPLAY="+wayland)
+	}
+	if dbusAddr != "" {
+		cmd.Env = append(cmd.Env, "DBUS_SESSION_BUS_ADDRESS="+dbusAddr)
+	}
+
 	cmd.Run()
+}
+
+func detectDisplay(user string) string {
+	cmd := exec.Command("loginctl", "show-user", user, "--property=Display", "--value")
+	out, err := cmd.Output()
+	if err == nil {
+		if d := strings.TrimSpace(string(out)); d != "" {
+			return ":" + d
+		}
+	}
+	for _, d := range []string{":0", ":1"} {
+		sock := filepath.Join("/tmp/.X11-unix", "X"+strings.TrimPrefix(d, ":"))
+		if _, err := os.Stat(sock); err == nil {
+			return d
+		}
+	}
+	return ""
 }
 
 func manageArchive(cfg Config) {
 	if cfg.ArchiveDays <= 0 {
 		return
 	}
-
-	archivePath := filepath.Join(cfg.TargetDir, cfg.ArchiveDir)
-	os.MkdirAll(archivePath, 0755)
-
-	files, err := os.ReadDir(cfg.TargetDir)
-	if err != nil {
+	archivePath := filepath.Join(cfg.TargetDir, "archive")
+	if err := os.MkdirAll(archivePath, 0755); err != nil {
+		logger.Printf("mkdir archive: %v", err)
 		return
 	}
 
-	now := time.Now()
+	files, err := os.ReadDir(cfg.TargetDir)
+	if err != nil {
+		logger.Printf("read dir for archive: %v", err)
+		return
+	}
+
+	cutoff := time.Now().Add(-time.Duration(cfg.ArchiveDays) * 24 * time.Hour)
+	moved := 0
 	for _, f := range files {
 		if f.IsDir() {
 			continue
 		}
-
 		info, err := f.Info()
 		if err != nil {
 			continue
 		}
-
-		if now.Sub(info.ModTime()) > time.Duration(cfg.ArchiveDays)*24*time.Hour {
-			oldPath := filepath.Join(cfg.TargetDir, f.Name())
-			newPath := filepath.Join(archivePath, f.Name())
-			if err := os.Rename(oldPath, newPath); err == nil {
-				logger.Printf("Archived old file: %s", f.Name())
+		if info.ModTime().Before(cutoff) {
+			old := filepath.Join(cfg.TargetDir, f.Name())
+			dst := filepath.Join(archivePath, f.Name())
+			if err := os.Rename(old, dst); err != nil {
+				logger.Printf("archive %s: %v", f.Name(), err)
+			} else {
+				moved++
 			}
 		}
+	}
+	if moved > 0 && cfg.LogLevel == "debug" {
+		logger.Printf("archived %d file(s)", moved)
 	}
 }

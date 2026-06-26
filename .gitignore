@@ -1,0 +1,4 @@
+tailscale-receiver-go
+memory.db
+*.bak
+*.swp
