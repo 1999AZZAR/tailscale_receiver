@@ -61,16 +61,33 @@ pick_device() {
 
 send_files() {
   local device=$1; shift
-  local ok=0 fail=0 f
+  local ok=0 fail=0 f pid
 
   for f in "$@"; do
     [[ -e "$f" ]] || { echo "skipping (not found): $f" >&2; ((fail++)); continue; }
     echo "sending: $f -> $device" >&2
-    if tailscale file cp "$f" "$device:" 2>/dev/null; then
+
+    # tailscale file cp can hang waiting for the peer;
+    # background it and check after 2s whether it's still running
+    tailscale file cp "$f" "$device:" 2>/dev/null &
+    pid=$!
+    sleep 2
+
+    if kill -0 "$pid" 2>/dev/null; then
+      # still running — transfer initiated, detach
+      disown "$pid" 2>/dev/null || true
+      echo "transfer started: $f" >&2
       ((ok++))
     else
-      echo "FAILED: $f" >&2
-      ((fail++))
+      wait "$pid" 2>/dev/null || true
+      local rc=$?
+      if [ "$rc" -eq 0 ]; then
+        echo "transfer complete: $f" >&2
+        ((ok++))
+      else
+        echo "FAILED: $f (exit $rc)" >&2
+        ((fail++))
+      fi
     fi
   done
 
