@@ -1,8 +1,11 @@
 # Tailscale Receiver v3 (Go)
 
+![Blotcat effortlessly catching files falling from a secure network portal into a neatly labeled target bucket](assets/blotcat-hero.jpg)
 Tailscale File Receiver yang fokus pada stabilitas dan efisiensi resource. Versi ini menggantikan implementasi shell script sebelumnya untuk mengurangi overhead sistem.
 
 ## Karakteristik Teknis
+
+![Blotcat peacefully meditating on top of a tiny, hyper-efficient, single-block engine representing the Go static binary](assets/blotcat-efficiency.jpg)
 - **Resource Efficiency**: Penggunaan memori konstan di kisaran ~2MB.
 - **Reliability**: Menggunakan signal.NotifyContext untuk penanganan termination secara bersih.
 - **Optimized Polling**: Validasi status Tailscale melalui JSON API sebelum eksekusi transfer file.
