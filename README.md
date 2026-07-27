@@ -28,6 +28,8 @@ Tailscale File Receiver yang fokus pada stabilitas dan efisiensi resource. Versi
    ```
 
 ## Konfigurasi
+
+![Blotcat checking a mailbox with a clipboard and a timer](assets/blotcat-polling.jpg)
 Konfigurasi dikelola melalui file `/etc/default/tailscale-receive` dengan variabel berikut:
 - `TARGET_DIR`: Direktori tujuan (default: `~/Downloads/tailscale`).
 - `TARGET_USER`: User pemilik file hasil transfer.
